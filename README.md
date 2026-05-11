@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI OS
 
-## Getting Started
+Personal dashboard for daily admin + side-project ops. Local-only Next.js app, designed as a new-tab landing page.
 
-First, run the development server:
+Aggregates:
+
+- **Obsidian** — tasks from `Tasks/` folder, daily note (read + write)
+- **Gmail + Google Calendar** — inbox triage, upcoming events
+- **GitHub** — review-requested PRs, your open PRs, assigned issues, unread notifications
+- **Agent panel** — Claude Opus 4.7 with tools (read your tasks, write to daily note, etc.), streaming + prompt caching, skill quick-buttons (Morning Brief, Triage Inbox, Plan Today, Weekly Review)
+- **Automations** — cron-scheduled agent runs, live status + recent runs, usage + cost
+- **Usage tracking** — per-day and 7-day token totals + cost estimate, persisted in SQLite
+
+## Stack
+
+Next.js 16, React 19, TypeScript, Tailwind v4, SQLite (better-sqlite3), `@anthropic-ai/sdk`, `googleapis`, `octokit`, `node-cron`, `gray-matter`, `date-fns`, `zod`.
+
+## Setup
 
 ```bash
+git clone <this-repo>
+cd ai-os
+npm install
+cp .env.local.example .env.local
+# fill in VAULT_PATH, optionally GITHUB_TOKEN, GOOGLE_*, ANTHROPIC_API_KEY
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Visit `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Required
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `VAULT_PATH` — absolute path to your Obsidian vault. Tasks read from `<VAULT_PATH>/Tasks/*.md`. Daily note at `<VAULT_PATH>/Daily/YYYY-MM-DD.md`.
 
-## Learn More
+### Optional (each feed degrades gracefully if not configured)
 
-To learn more about Next.js, take a look at the following resources:
+- `GITHUB_TOKEN` — classic PAT, scopes: `repo`, `notifications`, `read:user`
+- `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` — OAuth client, redirect `http://localhost:3000/api/auth/google/callback`. Click "Connect Google" in the UI to authorize.
+- `ANTHROPIC_API_KEY` — required for the agent panel + automations
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Architecture notes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- All feeds use direct API libs (not MCP) for daemon-style reads
+- OAuth tokens, automations, runs, and usage all persist in `data/ai-os.db` (gitignored)
+- Scheduler boots via `instrumentation.ts` (`node-cron`), reloads on automation create/update/delete
+- Obsidian Tasks plugin format supported: `- [ ]` checkboxes with emoji metadata (`📅` due, `🛫` start, `⏳` scheduled, `✅` done, `❌` cancelled, `⏫` priority, `🔁` recurrence)
+- Daily note edits debounce-save every 600ms; external Obsidian edits are picked up on next poll (30s)
