@@ -154,17 +154,29 @@ export async function* streamAgent(
           collectedText += event.delta.text;
           yield { type: "text", data: event.delta.text };
         }
+      } else if (event.type === "message_start") {
+        // Initial message snapshot may include container if code_execution
+        // was already provisioned server-side before streaming began.
+        const c = (event.message as { container?: { id?: string } | null }).container;
+        if (c && typeof c === "object" && c.id && c.id !== containerId) {
+          containerId = c.id;
+          yield { type: "container", data: containerId };
+        }
+      } else if (event.type === "message_delta") {
+        // SDK aggregator drops container from message_delta — read it manually.
+        const c = (event.delta as { container?: { id?: string } | null }).container;
+        if (c && typeof c === "object" && c.id && c.id !== containerId) {
+          containerId = c.id;
+          yield { type: "container", data: containerId };
+        }
       }
     }
 
     const final = await stream.finalMessage();
     apiMessages.push({ role: "assistant", content: final.content });
-
-    const newContainerId = (final as { container?: { id?: string } }).container?.id;
-    if (newContainerId && newContainerId !== containerId) {
-      containerId = newContainerId;
-      yield { type: "container", data: containerId };
-    }
+    console.log(
+      `[agent] iter ${iter} stop_reason=${final.stop_reason} containerId=${containerId ?? "none"}`,
+    );
 
     totals.input_tokens += final.usage.input_tokens ?? 0;
     totals.output_tokens += final.usage.output_tokens ?? 0;
