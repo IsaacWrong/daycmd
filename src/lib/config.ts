@@ -3,6 +3,7 @@ import { z } from "zod";
 const Env = z.object({
   VAULT_PATH: z.string().min(1, "VAULT_PATH required"),
   GITHUB_TOKEN: z.string().optional().default(""),
+  DISCORD_BOT_TOKEN: z.string().optional().default(""),
   GOOGLE_CLIENT_ID: z.string().optional().default(""),
   GOOGLE_CLIENT_SECRET: z.string().optional().default(""),
   GOOGLE_REDIRECT_URI: z
