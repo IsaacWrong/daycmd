@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useFocusMode, useTod, TodFrame } from "@/components/redesign/TodFrame";
 import { Masthead } from "@/components/redesign/Masthead";
 import { FocusTile } from "@/components/redesign/FocusTile";
@@ -19,6 +20,11 @@ import { AgentBar, SkillStrip } from "@/components/redesign/AgentBar";
 export default function Home() {
   const tod = useTod();
   const [focus, toggleFocus] = useFocusMode();
+
+  // Fire stale KB auto-compile sweep on mount. Server-side dedupes (5-min debounce).
+  useEffect(() => {
+    fetch("/api/kb/auto-compile", { method: "POST" }).catch(() => {});
+  }, []);
 
   return (
     <TodFrame tod={tod} focus={focus}>

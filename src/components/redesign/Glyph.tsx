@@ -104,3 +104,22 @@ export function todEmoji(tod: string): string {
   };
   return map[tod] ?? "🌤";
 }
+
+// WMO weather codes from open-meteo:
+// 0 clear, 1-3 partly cloudy/overcast, 45/48 fog, 51-57 drizzle,
+// 61-67 rain, 71-77 snow, 80-82 rain showers, 85-86 snow showers,
+// 95-99 thunderstorm
+export function weatherEmoji(code: number, isNight = false): string {
+  if (code === 0) return isNight ? "🌙" : "☀️";
+  if (code === 1) return isNight ? "🌙" : "🌤️";
+  if (code === 2) return "⛅";
+  if (code === 3) return "☁️";
+  if (code === 45 || code === 48) return "🌫️";
+  if (code >= 51 && code <= 57) return "🌦️";
+  if (code >= 61 && code <= 67) return "🌧️";
+  if (code >= 71 && code <= 77) return "❄️";
+  if (code >= 80 && code <= 82) return "🌧️";
+  if (code === 85 || code === 86) return "🌨️";
+  if (code >= 95 && code <= 99) return "⛈️";
+  return "🌤️";
+}

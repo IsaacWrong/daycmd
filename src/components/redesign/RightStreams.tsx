@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { format, formatDistanceToNowStrict, isToday, isTomorrow } from "date-fns";
 import { usePoll } from "@/lib/hooks";
 import type { CalEvent } from "@/lib/calendar";
@@ -273,40 +274,106 @@ function GitHubSection() {
   );
 }
 
+function KnowledgeRow({
+  c,
+  onRun,
+  busy,
+}: {
+  c: CategoryStats;
+  onRun: (name: string) => void;
+  busy: boolean;
+}) {
+  const stale = !c.lastCompileAt || Date.now() - c.lastCompileAt > 6 * 3600_000;
+  const stamp = c.lastCompileAt ?? c.lastRawAt ?? 0;
+  const driftColor =
+    c.driftCount > 0
+      ? stale
+        ? "var(--c-error)"
+        : "var(--c-agent)"
+      : "var(--fg-soft)";
+  return (
+    <div className="flex items-center gap-1.5 py-1 text-[12px]">
+      <Note s={11} c="var(--c-agent)" />
+      <span className="flex-1 truncate" style={{ letterSpacing: "-0.005em" }}>
+        <span className="text-fg">{c.name}</span>
+        <span className="text-fg-soft"> · {c.wikiCount} wiki</span>
+      </span>
+      <span
+        className="t-mono"
+        style={{ fontSize: 10, color: driftColor }}
+        title={`${c.driftCount} raw files drifted since last compile`}
+      >
+        {c.driftCount > 0 ? `+${c.driftCount}` : "·"}
+      </span>
+      <span className="t-mono text-fg-soft" style={{ fontSize: 10 }} title={stamp ? new Date(stamp).toLocaleString() : "never"}>
+        {stamp ? ago(stamp) : "—"}
+      </span>
+      <button
+        type="button"
+        onClick={() => onRun(c.name)}
+        disabled={busy}
+        title={busy ? "running…" : "Compile now"}
+        className="t-mono hover:text-fg"
+        style={{
+          background: "transparent",
+          border: 0,
+          padding: 0,
+          fontSize: 10,
+          color: busy ? "var(--fg-soft)" : "var(--c-agent)",
+          cursor: busy ? "wait" : "pointer",
+        }}
+      >
+        {busy ? "…" : "run"}
+      </button>
+    </div>
+  );
+}
+
 function KnowledgeSection() {
-  const { data } = usePoll<{ categories: CategoryStats[] }>("/api/kb", 5 * 60_000);
-  const recent = (data?.categories ?? [])
-    .filter((c) => c.lastCompileAt || c.lastRawAt)
-    .sort(
-      (a, b) =>
-        (b.lastCompileAt ?? b.lastRawAt ?? 0) -
-        (a.lastCompileAt ?? a.lastRawAt ?? 0),
-    )
-    .slice(0, 5);
+  const { data, refresh } = usePoll<{ categories: CategoryStats[] }>(
+    "/api/kb",
+    5 * 60_000,
+  );
+  const automations = usePoll<{
+    automations: Array<{ id: number; name: string; kind: string; target_category: string | null; enabled: boolean }>;
+  }>("/api/automations", 5 * 60_000).data;
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const cats = (data?.categories ?? []).slice().sort((a, b) => {
+    // Prioritise drift+stale, then drift, then most-recent activity.
+    const aStaleDrift = a.driftCount > 0 && (!a.lastCompileAt || Date.now() - a.lastCompileAt > 6 * 3600_000) ? 1 : 0;
+    const bStaleDrift = b.driftCount > 0 && (!b.lastCompileAt || Date.now() - b.lastCompileAt > 6 * 3600_000) ? 1 : 0;
+    if (aStaleDrift !== bStaleDrift) return bStaleDrift - aStaleDrift;
+    if (a.driftCount !== b.driftCount) return b.driftCount - a.driftCount;
+    return (b.lastCompileAt ?? b.lastRawAt ?? 0) - (a.lastCompileAt ?? a.lastRawAt ?? 0);
+  });
+
+  async function runCompile(name: string) {
+    const target = (automations?.automations ?? []).find(
+      (a) => a.kind === "compile" && a.target_category === name && a.enabled,
+    );
+    if (!target) return;
+    setBusy(name);
+    try {
+      await fetch(`/api/automations/${target.id}/run`, { method: "POST" });
+    } finally {
+      setBusy(null);
+      refresh();
+    }
+  }
+
   return (
     <SectionMini title="Knowledge" accent="agent">
-      {recent.map((c) => {
-        const stamp = c.lastCompileAt ?? c.lastRawAt ?? 0;
-        return (
-          <div
-            key={c.name}
-            className="flex items-baseline gap-1.5 py-1 text-[12px]"
-          >
-            <Note s={11} c="var(--c-agent)" />
-            <span className="flex-1" style={{ letterSpacing: "-0.005em" }}>
-              <span className="text-fg-soft">{c.name} / </span>
-              <span className="text-fg">
-                {c.wikiCount + c.outputCount} pages
-              </span>
-            </span>
-            <span className="t-mono text-fg-soft" style={{ fontSize: 10 }}>
-              {ago(stamp)}
-            </span>
-          </div>
-        );
-      })}
-      {recent.length === 0 && (
-        <p className="text-[12px] text-fg-soft py-1">Nothing compiled yet.</p>
+      {cats.slice(0, 6).map((c) => (
+        <KnowledgeRow
+          key={c.name}
+          c={c}
+          onRun={runCompile}
+          busy={busy === c.name}
+        />
+      ))}
+      {cats.length === 0 && (
+        <p className="text-[12px] text-fg-soft py-1">No categories yet.</p>
       )}
     </SectionMini>
   );

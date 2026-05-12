@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { usePoll } from "@/lib/hooks";
 import type { Tod } from "./TodFrame";
-import { todEmoji } from "./Glyph";
+import { todEmoji, weatherEmoji } from "./Glyph";
 
 type Weather = { tempF: number; hi: number; lo: number; code: number; city: string; region: string };
 
@@ -144,7 +144,9 @@ export function Masthead({
       </span>
       <span className="w-px h-3.5" style={{ background: "var(--rule)" }} />
       <div className="flex items-center gap-2 text-[12px] whitespace-nowrap">
-        <span style={{ fontSize: 14, opacity: 0.85 }}>{todEmoji(tod)}</span>
+        <span style={{ fontSize: 14, opacity: 0.85 }}>
+          {w ? weatherEmoji(w.code, tod === "night" || tod === "deep") : todEmoji(tod)}
+        </span>
         {w ? (
           <span className="t-mono t-num text-fg-soft">
             {w.tempF}° · H{w.hi} L{w.lo}

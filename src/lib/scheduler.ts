@@ -1,5 +1,5 @@
 import cron, { type ScheduledTask } from "node-cron";
-import { listAutomations, runAutomation } from "./automations";
+import { ensureDefaultKbAutomations, listAutomations, runAutomation } from "./automations";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -61,7 +61,17 @@ export function startScheduler() {
   const s = state();
   if (s.started) return;
   s.started = true;
-  reloadScheduler();
+  ensureDefaultKbAutomations()
+    .then((res) => {
+      if (res.created.length) {
+        console.log(`[scheduler] seeded ${res.created.length} KB automations`);
+      }
+      reloadScheduler();
+    })
+    .catch((e) => {
+      console.error(`[scheduler] KB seed failed:`, (e as Error).message);
+      reloadScheduler();
+    });
 }
 
 export function schedulerStatus() {
