@@ -4,9 +4,10 @@ import os from "node:os";
 import { db } from "./db";
 import { runAgentOnce, type UsageTotals } from "./agent";
 import { streamCompile } from "./kb-compile";
+import { streamLint } from "./kb-lint";
 import { logError } from "./errors";
 
-export type AutomationKind = "agent" | "compile";
+export type AutomationKind = "agent" | "compile" | "lint";
 
 export type Automation = {
   id: number;
@@ -162,8 +163,8 @@ export async function runAutomation(id: number): Promise<AutomationRun> {
       error?: string;
       usage: UsageTotals;
     };
-    if (a.kind === "compile" && a.target_category) {
-      // Drain a compile stream into the same {ok, output, usage} shape.
+    if ((a.kind === "compile" || a.kind === "lint") && a.target_category) {
+      // Drain a compile/lint stream into the same {ok, output, usage} shape.
       let output = "";
       let error: string | undefined;
       let usage: UsageTotals = {
@@ -172,13 +173,30 @@ export async function runAutomation(id: number): Promise<AutomationRun> {
         cache_read_tokens: 0,
         cache_write_tokens: 0,
       };
-      for await (const ev of streamCompile(a.target_category)) {
+      const stream = a.kind === "compile"
+        ? streamCompile(a.target_category)
+        : streamLint(a.target_category);
+      for await (const ev of stream) {
         if (ev.type === "text") output += ev.data as string;
         else if (ev.type === "error") error = String(ev.data);
         else if (ev.type === "usage") usage = ev.data as UsageTotals;
         else if (ev.type === "done") {
           const d = ev.data as { summary?: string };
           if (d?.summary) output = `${d.summary}\n\n${output}`.trim();
+        } else if (ev.type === "lint_result" && a.kind === "lint") {
+          const d = ev.data as {
+            findings?: Array<{ type: string; location: string; description: string }>;
+            summary?: string;
+          };
+          const findings = d.findings ?? [];
+          for (const f of findings) {
+            logError(
+              `kb_lint:${a.target_category}:${f.type}`,
+              `${f.location} — ${f.description}`,
+              { category: a.target_category, finding: f },
+            );
+          }
+          if (d.summary) output = `${d.summary}\n\n${output}`.trim();
         }
       }
       result = { ok: !error, output, error, usage };
@@ -215,6 +233,57 @@ export async function runAutomation(id: number): Promise<AutomationRun> {
   return db
     .prepare("SELECT * FROM automation_runs WHERE id = ?")
     .get(runId) as AutomationRun;
+}
+
+// 6am daily compile, 6:30am daily lint.
+const DEFAULT_COMPILE_CRON = "0 6 * * *";
+const DEFAULT_LINT_CRON = "30 6 * * *";
+
+function automationExists(name: string): boolean {
+  const row = db
+    .prepare("SELECT 1 FROM automations WHERE name = ?")
+    .get(name) as unknown;
+  return !!row;
+}
+
+/**
+ * Seed one compile + one lint automation per KB category (idempotent).
+ * Existing rows w/ matching names are left alone.
+ */
+export async function ensureDefaultKbAutomations(): Promise<{ created: string[] }> {
+  const { listCategories } = await import("./kb");
+  const created: string[] = [];
+  let cats: string[] = [];
+  try {
+    cats = await listCategories();
+  } catch {
+    return { created };
+  }
+  for (const cat of cats) {
+    const compileName = `KB Compile · ${cat}`;
+    if (!automationExists(compileName)) {
+      createAutomation({
+        name: compileName,
+        cron: DEFAULT_COMPILE_CRON,
+        kind: "compile",
+        target_category: cat,
+        enabled: true,
+      });
+      created.push(compileName);
+    }
+    const lintName = `KB Lint · ${cat}`;
+    if (!automationExists(lintName)) {
+      createAutomation({
+        name: lintName,
+        cron: DEFAULT_LINT_CRON,
+        kind: "lint",
+        target_category: cat,
+        enabled: true,
+      });
+      created.push(lintName);
+    }
+  }
+  return { created };
 }
 
 export type ClaudeCodeRoutine = {
