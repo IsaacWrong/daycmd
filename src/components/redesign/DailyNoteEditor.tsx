@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { format } from "date-fns";
+import { ObsidianEditor } from "./ObsidianEditor";
 
 type DailyResp = { path: string; content: string; exists: boolean; mtime: number };
 
@@ -24,7 +25,6 @@ export function DailyNoteEditor({
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -50,8 +50,14 @@ export function DailyNoteEditor({
 
   useEffect(() => {
     if (!open) return;
-    const t = setTimeout(() => textareaRef.current?.focus(), 50);
-    return () => clearTimeout(t);
+    function onWikilink(e: Event) {
+      const detail = (e as CustomEvent<{ target: string; alias?: string }>).detail;
+      if (!detail?.target) return;
+      const file = encodeURIComponent(detail.target);
+      window.location.href = `obsidian://open?file=${file}`;
+    }
+    window.addEventListener("obsidian:open-wikilink", onWikilink);
+    return () => window.removeEventListener("obsidian:open-wikilink", onWikilink);
   }, [open]);
 
   useEffect(() => {
@@ -207,27 +213,7 @@ export function DailyNoteEditor({
           </button>
         </header>
         <hr className="hr-rule mb-3" />
-        <textarea
-          ref={textareaRef}
-          value={content}
-          onChange={(e) => onChange(e.target.value)}
-          spellCheck
-          className="scroll flex-1 min-h-0 w-full"
-          style={{
-            background: "transparent",
-            border: 0,
-            outline: 0,
-            resize: "none",
-            color: "var(--fg)",
-            fontSize: 14.5,
-            lineHeight: 1.6,
-            letterSpacing: "-0.005em",
-            fontFamily: "inherit",
-            padding: 4,
-            textWrap: "pretty",
-          }}
-          placeholder="Write…"
-        />
+        <ObsidianEditor value={content} onChange={onChange} autoFocus />
         <div
           className="t-mono mt-2 flex justify-between"
           style={{ fontSize: 10, color: "var(--fg-soft)" }}

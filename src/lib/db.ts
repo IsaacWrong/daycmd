@@ -102,5 +102,8 @@ export const db =
       );
       CREATE INDEX IF NOT EXISTS idx_error_log_ts ON error_log(ts DESC);
     `);
+    try {
+      d.exec("ALTER TABLE error_log ADD COLUMN resolved_at INTEGER");
+    } catch {}
     return d;
   })());
