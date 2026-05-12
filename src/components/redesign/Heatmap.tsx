@@ -6,7 +6,7 @@ import { usePoll } from "@/lib/hooks";
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
 export function Heatmap() {
-  const { data } = usePoll<{ days: number[] }>("/api/heatmap", 10 * 60_000);
+  const { data } = usePoll<{ days: number[] }>("/api/heatmap", 90_000);
   const days: number[] = data?.days ?? new Array(14).fill(0);
   const max = Math.max(...days, 1);
   const today = new Date();

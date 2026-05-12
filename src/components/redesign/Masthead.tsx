@@ -65,17 +65,18 @@ function weekOfYear(d: Date): number {
 export function Masthead({
   tod,
   name = "Isaac",
-  agentRuns = 0,
-  category = "AI OS",
 }: {
   tod: Tod;
   name?: string;
-  agentRuns?: number;
-  category?: string;
 }) {
-  const today = new Date();
-  const dateLine = format(today, "EEEE, MMMM d");
-  const week = weekOfYear(today);
+  const [now, setNow] = useState<Date>(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const dateLine = format(now, "EEEE, MMMM d");
+  const week = weekOfYear(now);
+  const clock = format(now, "h:mm a");
   const streaks =
     usePoll<{ dailyNote: number; ship: number }>("/api/streaks", 5 * 60_000).data;
   const shipStreak = streaks?.ship ?? 0;
@@ -134,11 +135,13 @@ export function Masthead({
 
       <span className="flex-1" />
 
-      <div className="flex items-center gap-2 text-[12px] whitespace-nowrap">
-        <span className="src-dot src-agent" />
-        <span className="text-fg">{category}</span>
-        <span className="t-mono text-fg-soft">{agentRuns} runs</span>
-      </div>
+      <span
+        className="t-mono t-num text-[12px] text-fg whitespace-nowrap"
+        title={format(now, "yyyy-MM-dd HH:mm:ss")}
+        suppressHydrationWarning
+      >
+        {clock}
+      </span>
       <span className="w-px h-3.5" style={{ background: "var(--rule)" }} />
       <div className="flex items-center gap-2 text-[12px] whitespace-nowrap">
         <span style={{ fontSize: 14, opacity: 0.85 }}>{todEmoji(tod)}</span>

@@ -65,7 +65,7 @@ export function TodayInNumbers() {
   const tasks = usePoll<{ tasks: ObsidianTask[] }>("/api/obsidian/tasks", 60_000).data;
   const gh = usePoll<GhSummary | { error: string }>("/api/github", 60_000).data;
   const daily = usePoll<{ exists: boolean; content: string }>("/api/obsidian/daily", 60_000).data;
-  const heat = usePoll<{ days: number[] }>("/api/heatmap", 10 * 60_000).data;
+  const heat = usePoll<{ days: number[] }>("/api/heatmap", 90_000).data;
 
   const today = new Date().toISOString().slice(0, 10);
   const todayTokens =
