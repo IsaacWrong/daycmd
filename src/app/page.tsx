@@ -11,6 +11,7 @@ import { KnowledgeCard } from "@/components/KnowledgeCard";
 import { NowNext } from "@/components/NowNext";
 import { ErrorsCard } from "@/components/ErrorsCard";
 import { WeatherBadge } from "@/components/WeatherBadge";
+import { SkillsPanel } from "@/components/SkillsPanel";
 
 export default function Home() {
   const today = format(new Date(), "EEEE, MMMM d");
@@ -32,6 +33,7 @@ export default function Home() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <AgentPanel />
+        <SkillsPanel />
         <KnowledgeCard />
         <AutomationsCard />
         <CalendarCard />

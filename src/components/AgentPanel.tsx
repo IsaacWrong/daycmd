@@ -8,6 +8,8 @@ import { Markdown } from "./Markdown";
 const CATEGORY_LS_KEY = "ai-os.agent.category";
 const MESSAGES_LS_KEY = (cat: string) => `ai-os.agent.messages.${cat}`;
 const CONTAINER_LS_KEY = (cat: string) => `ai-os.agent.container.${cat}`;
+const BUSY_EVENT = "ai-os:agent-busy";
+const RUN_SKILL_EVENT = "ai-os:run-skill";
 
 type Msg = {
   role: "user" | "assistant";
@@ -43,7 +45,6 @@ function saveContainer(cat: string, id: string | null): void {
 }
 
 export function AgentPanel() {
-  const [skills, setSkills] = useState<SkillDef[]>([]);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -53,11 +54,12 @@ export function AgentPanel() {
   const [hydrated, setHydrated] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Broadcast busy state for SkillsPanel
   useEffect(() => {
-    fetch("/api/agent/skills")
-      .then((r) => r.json())
-      .then((j) => setSkills(j.skills ?? []))
-      .catch(() => {});
+    window.dispatchEvent(new CustomEvent(BUSY_EVENT, { detail: busy }));
+  }, [busy]);
+
+  useEffect(() => {
     fetch("/api/kb")
       .then((r) => r.json())
       .then((j: { categories: Array<{ name: string }> }) => {
@@ -97,6 +99,18 @@ export function AgentPanel() {
       behavior: "smooth",
     });
   }, [messages]);
+
+  // Listen for skill clicks from SkillsPanel
+  const sendRef = useRef<((content: string, skill?: SkillDef) => void) | null>(null);
+  useEffect(() => {
+    function handler(e: Event) {
+      const skill = (e as CustomEvent<SkillDef>).detail;
+      if (!skill || !sendRef.current) return;
+      sendRef.current(skill.prompt, skill);
+    }
+    window.addEventListener(RUN_SKILL_EVENT, handler);
+    return () => window.removeEventListener(RUN_SKILL_EVENT, handler);
+  }, []);
 
   async function send(content: string, skill?: SkillDef) {
     if (!content.trim() || busy) return;
@@ -213,8 +227,13 @@ export function AgentPanel() {
     saveContainer(category, null);
   }
 
+  // keep ref to latest send for skill listener
+  useEffect(() => {
+    sendRef.current = send;
+  });
+
   return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 lg:col-span-4 flex flex-col min-h-[480px]">
+    <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 lg:col-span-3 flex flex-col min-h-[480px]">
       <header className="flex items-center justify-between mb-3 gap-4 flex-wrap">
         <div className="flex items-center gap-4">
           <h2 className="text-sm font-medium uppercase tracking-wider text-zinc-400">
@@ -222,7 +241,7 @@ export function AgentPanel() {
           </h2>
           <UsageStrip />
         </div>
-        <div className="flex gap-1.5 flex-wrap">
+        <div className="flex gap-1.5 flex-wrap items-center">
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
@@ -236,17 +255,6 @@ export function AgentPanel() {
               </option>
             ))}
           </select>
-          {skills.map((s) => (
-            <button
-              key={s.id}
-              disabled={busy}
-              onClick={() => send(s.prompt, s)}
-              title={`${s.description}${s.category ? ` (→ ${s.category})` : ""}`}
-              className="text-xs px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-50"
-            >
-              {s.label}
-            </button>
-          ))}
           {messages.length > 0 && (
             <button
               onClick={clearThread}
