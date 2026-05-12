@@ -88,6 +88,17 @@ export const SKILLS: SkillDef[] = [
       "Call route_quick_capture once. Report back the count routed per category and any unrouted lines with reason. Don't add commentary.",
   },
   {
+    id: "linkedin-post",
+    label: "LinkedIn Post",
+    description: "Draft a LinkedIn-native post from a seed idea or recent activity",
+    category: "Personal",
+    model: "claude-sonnet-4-6",
+    effort: "medium",
+    maxTokens: 4000,
+    prompt:
+      "Draft a LinkedIn post. I'll give you the seed in my next message (topic, link, takeaway, or 'use my recent activity').\n\nIf I say 'use my recent activity' or give nothing concrete: pull signal — recent daily notes (last 3 days), shipped GitHub commits, or a wiki page in Research/. Pick ONE concrete thing and lead with it. Don't generalize across many.\n\nVoice & structure:\n- LinkedIn-native, not blog-style. Short lines. Line breaks between thoughts (LinkedIn collapses paragraphs).\n- Hook = first line. Specific claim, contrarian take, or concrete number. No 'In today's world…' openers.\n- 120–220 words. Tighter is better.\n- One idea per post. No listicles unless the seed is genuinely list-shaped.\n- End with a question or low-friction CTA. No 'Thoughts?' alone — make it specific.\n- 0–3 hashtags max, at the end, only if they add reach. Skip otherwise.\n- No emojis unless I ask. No em-dash patterns ('— and') chained. No 'delve', 'tapestry', 'navigate the landscape', 'in an ever-evolving'. Plain working voice.\n- If I'm referencing my CEPA®, JWC Wealth, Palm Commissions, or Exit Edge Ai work — keep it grounded and avoid compliance landmines (no specific investment advice, no performance claims).\n\nOutput: the post body only, in a single code block so I can copy-paste. Below the block, one line: 'Variants?' and offer to do (a) shorter, (b) more contrarian, (c) story-driven. Wait for my reply.\n\nIf seed is unclear, ask ONE clarifying question before drafting. Don't draft 3 versions upfront — wait.",
+  },
+  {
     id: "weekly",
     label: "Weekly Review",
     description: "Summarize past 7 days from daily notes",
