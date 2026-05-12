@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
+import { usePoll } from "@/lib/hooks";
 import type { Tod } from "./TodFrame";
 import { todEmoji } from "./Glyph";
 
@@ -64,19 +65,20 @@ function weekOfYear(d: Date): number {
 export function Masthead({
   tod,
   name = "Isaac",
-  shipStreak = 0,
   agentRuns = 0,
   category = "AI OS",
 }: {
   tod: Tod;
   name?: string;
-  shipStreak?: number;
   agentRuns?: number;
   category?: string;
 }) {
   const today = new Date();
   const dateLine = format(today, "EEEE, MMMM d");
   const week = weekOfYear(today);
+  const streaks =
+    usePoll<{ dailyNote: number; ship: number }>("/api/streaks", 5 * 60_000).data;
+  const shipStreak = streaks?.ship ?? 0;
 
   const [weather, setWeather] = useState<Weather | null>(null);
   useEffect(() => {

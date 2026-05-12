@@ -140,34 +140,78 @@ export async function getDailyCommitCounts(
 ): Promise<number[]> {
   const counts = new Array(days).fill(0);
   const gh = client();
-  if (!gh || repoSlugs.length === 0) return counts;
+  if (!gh) return counts;
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   start.setDate(start.getDate() - (days - 1));
-  const since = start.toISOString();
-  type RawCommit = { commit: { author: { date: string } | null } };
+  const startMs = start.getTime();
+
+  // Authenticated user → pull their public + private push activity across ALL repos
+  // (covers repos that aren't tracked in the vault Projects/ folder).
+  let login: string | null = null;
+  try {
+    const me = await gh.request("GET /user");
+    login = (me.data as { login: string }).login;
+  } catch {}
+
+  const seen = new Set<string>(); // dedupe by repo+sha
+  function addCommit(dateIso: string) {
+    const d = new Date(dateIso);
+    d.setHours(0, 0, 0, 0);
+    const idx = Math.floor((d.getTime() - startMs) / 86_400_000);
+    if (idx >= 0 && idx < days) counts[idx] += 1;
+  }
+
+  // Discover all repos the user has pushed to in the window via the events
+  // feed (covers repos not tracked in vault Projects/).
+  const discovered = new Set<string>();
+  if (login) {
+    type Event = {
+      type: string;
+      created_at: string;
+      repo: { name: string };
+    };
+    try {
+      const evRes = await gh.request("GET /users/{username}/events", {
+        username: login,
+        per_page: 100,
+      });
+      for (const ev of evRes.data as Event[]) {
+        if (ev.type !== "PushEvent") continue;
+        if (new Date(ev.created_at).getTime() < startMs) continue;
+        discovered.add(ev.repo.name);
+      }
+    } catch {}
+  }
+
+  // Merge with vault-tracked repos.
+  const allRepos = Array.from(new Set([...repoSlugs, ...discovered]));
+
+  const sinceIso = start.toISOString();
+  type RawCommit = { sha: string; commit: { author: { date: string } | null } };
   const results = await Promise.allSettled(
-    repoSlugs.map(async (slug) => {
+    allRepos.map(async (slug) => {
       const parts = splitRepo(slug);
-      if (!parts) return [];
+      if (!parts) return { slug, commits: [] as RawCommit[] };
       const res = await gh.request("GET /repos/{owner}/{repo}/commits", {
         owner: parts.owner,
         repo: parts.repo,
-        since,
+        since: sinceIso,
         per_page: 100,
+        ...(login ? { author: login } : {}),
       });
-      return res.data as RawCommit[];
+      return { slug, commits: res.data as RawCommit[] };
     }),
   );
   for (const r of results) {
     if (r.status !== "fulfilled") continue;
-    for (const c of r.value) {
+    for (const c of r.value.commits) {
       const date = c.commit.author?.date;
       if (!date) continue;
-      const d = new Date(date);
-      d.setHours(0, 0, 0, 0);
-      const idx = Math.floor((d.getTime() - start.getTime()) / 86_400_000);
-      if (idx >= 0 && idx < days) counts[idx] += 1;
+      const key = `${r.value.slug}/${c.sha}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      addCommit(date);
     }
   }
   return counts;

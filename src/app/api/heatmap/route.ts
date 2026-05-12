@@ -8,8 +8,10 @@ export const dynamic = "force-dynamic";
 let cache: { ts: number; data: number[] } | null = null;
 const TTL_MS = 10 * 60_000;
 
-export async function GET() {
-  if (cache && Date.now() - cache.ts < TTL_MS) {
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const fresh = url.searchParams.get("fresh") === "1";
+  if (!fresh && cache && Date.now() - cache.ts < TTL_MS) {
     return NextResponse.json({ days: cache.data });
   }
   try {

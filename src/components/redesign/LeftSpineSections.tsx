@@ -64,8 +64,8 @@ export function TodayInNumbers() {
   const usage = usePoll<UsageResp>("/api/usage", 60_000).data;
   const tasks = usePoll<{ tasks: ObsidianTask[] }>("/api/obsidian/tasks", 60_000).data;
   const gh = usePoll<GhSummary | { error: string }>("/api/github", 60_000).data;
-  const projects = usePoll<{ projects: ProjectDTO[] }>("/api/projects", 60_000).data;
   const daily = usePoll<{ exists: boolean; content: string }>("/api/obsidian/daily", 60_000).data;
+  const heat = usePoll<{ days: number[] }>("/api/heatmap", 10 * 60_000).data;
 
   const today = new Date().toISOString().slice(0, 10);
   const todayTokens =
@@ -75,10 +75,9 @@ export function TodayInNumbers() {
   const tasksDoneToday = (tasks?.tasks ?? []).filter(
     (t) => t.done && t.doneDate === today,
   ).length;
-  const weeklyCommits = (projects?.projects ?? []).reduce(
-    (acc, p) => acc + (p.stats?.weeklyCommits ?? 0),
-    0,
-  );
+  const days = heat?.days ?? [];
+  const commitsToday = days.length > 0 ? days[days.length - 1] : 0;
+  const commits7d = days.slice(-7).reduce((a, b) => a + b, 0);
   const dailyWords = daily?.exists
     ? daily.content.trim().split(/\s+/).filter(Boolean).length
     : 0;
@@ -106,9 +105,11 @@ export function TodayInNumbers() {
         tone="var(--c-tasks)"
       />
       <NumberRow
-        label="Commits · 7d"
-        value={String(weeklyCommits)}
+        label="Commits"
+        value={String(commitsToday)}
+        sub={`${commits7d} · 7d`}
         tone="var(--c-github)"
+        spark={days}
       />
       <NumberRow label="GitHub open" value={String(ghOpen)} tone="var(--c-gmail)" />
       <NumberRow
@@ -156,21 +157,10 @@ function StreakBar({
 }
 
 export function Streaks() {
-  // Daily note streak: count consecutive days back from today w/ a daily-note word count.
-  // Ship streak: days back with ≥1 commit (derived from heatmap).
-  const heat = usePoll<{ days: number[] }>("/api/heatmap", 10 * 60_000).data;
-  const daily = usePoll<{ exists: boolean }>("/api/obsidian/daily", 5 * 60_000).data;
-
-  const shipDays = (() => {
-    const days = heat?.days ?? [];
-    let count = 0;
-    for (let i = days.length - 1; i >= 0; i--) {
-      if (days[i] > 0) count += 1;
-      else break;
-    }
-    return count;
-  })();
-  const dailyNote = daily?.exists ? 1 : 0;
+  const streaks =
+    usePoll<{ dailyNote: number; ship: number }>("/api/streaks", 5 * 60_000).data;
+  const dailyNote = streaks?.dailyNote ?? 0;
+  const shipDays = streaks?.ship ?? 0;
 
   return (
     <SectionMini title="Streaks">
