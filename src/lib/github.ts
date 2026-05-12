@@ -119,3 +119,74 @@ export async function getSummary(): Promise<GhSummary | { error: string }> {
 
   return { authored, reviewRequested, assigned, notifications, user: login };
 }
+
+export type RepoStats = {
+  repo: string;
+  lastCommit: { sha: string; message: string; url: string; date: string } | null;
+  weeklyCommits: number;
+  openPRs: number;
+  error?: string;
+};
+
+function splitRepo(slug: string): { owner: string; repo: string } | null {
+  const parts = slug.split("/");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  return { owner: parts[0], repo: parts[1] };
+}
+
+export async function getRepoStats(slug: string): Promise<RepoStats> {
+  const empty: RepoStats = {
+    repo: slug,
+    lastCommit: null,
+    weeklyCommits: 0,
+    openPRs: 0,
+  };
+  const gh = client();
+  if (!gh) return { ...empty, error: "GITHUB_TOKEN not set" };
+  const parts = splitRepo(slug);
+  if (!parts) return { ...empty, error: `invalid repo slug: ${slug}` };
+
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  type RawCommit = {
+    sha: string;
+    html_url: string;
+    commit: { message: string; author: { date: string } | null };
+  };
+  type RawPull = { number: number };
+
+  try {
+    const [commitsRes, prsRes] = await Promise.all([
+      gh.request("GET /repos/{owner}/{repo}/commits", {
+        owner: parts.owner,
+        repo: parts.repo,
+        since,
+        per_page: 100,
+      }),
+      gh.request("GET /repos/{owner}/{repo}/pulls", {
+        owner: parts.owner,
+        repo: parts.repo,
+        state: "open",
+        per_page: 100,
+      }),
+    ]);
+    const commits = commitsRes.data as RawCommit[];
+    const prs = prsRes.data as RawPull[];
+    const last = commits[0];
+    return {
+      repo: slug,
+      lastCommit: last
+        ? {
+            sha: last.sha.slice(0, 7),
+            message: last.commit.message.split("\n")[0],
+            url: last.html_url,
+            date: last.commit.author?.date ?? "",
+          }
+        : null,
+      weeklyCommits: commits.length,
+      openPRs: prs.length,
+    };
+  } catch (err) {
+    return { ...empty, error: err instanceof Error ? err.message : String(err) };
+  }
+}
