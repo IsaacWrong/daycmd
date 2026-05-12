@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { SkillDef } from "@/lib/skills-defs";
 import { UsageStrip } from "./UsageStrip";
 import { Markdown } from "./Markdown";
@@ -53,6 +54,26 @@ export function AgentPanel() {
   const [category, setCategory] = useState("Personal");
   const [hydrated, setHydrated] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const meta = e.metaKey || e.ctrlKey;
+      if (meta && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        setExpanded((v) => !v);
+      }
+      if (e.key === "Escape") setExpanded(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Broadcast busy state for SkillsPanel
   useEffect(() => {
@@ -60,21 +81,48 @@ export function AgentPanel() {
   }, [busy]);
 
   useEffect(() => {
-    fetch("/api/kb")
-      .then((r) => r.json())
-      .then((j: { categories: Array<{ name: string }> }) => {
-        const names = (j.categories ?? []).map((c) => c.name);
-        if (names.length) setCategories(names);
-        const saved =
-          typeof window !== "undefined"
-            ? localStorage.getItem(CATEGORY_LS_KEY)
-            : null;
-        const useCat = saved && names.includes(saved) ? saved : "Personal";
-        setCategory(useCat);
-        setMessages(loadMessages(useCat));
-        setHydrated(true);
-      })
-      .catch(() => setHydrated(true));
+    let cancelled = false;
+
+    const loadCategories = (initial: boolean) => {
+      fetch("/api/kb")
+        .then((r) => r.json())
+        .then((j: { categories: Array<{ name: string }> }) => {
+          if (cancelled) return;
+          const names = (j.categories ?? []).map((c) => c.name);
+          if (names.length) setCategories(names);
+          if (initial) {
+            const saved =
+              typeof window !== "undefined"
+                ? localStorage.getItem(CATEGORY_LS_KEY)
+                : null;
+            const useCat = saved && names.includes(saved) ? saved : "Personal";
+            setCategory(useCat);
+            setMessages(loadMessages(useCat));
+            setHydrated(true);
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          if (initial) setHydrated(true);
+        });
+    };
+
+    loadCategories(true);
+
+    const onFocus = () => loadCategories(false);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") loadCategories(false);
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    const id = setInterval(() => loadCategories(false), 60_000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(id);
+    };
   }, []);
 
   // Persist category choice
@@ -106,6 +154,7 @@ export function AgentPanel() {
     function handler(e: Event) {
       const skill = (e as CustomEvent<SkillDef>).detail;
       if (!skill || !sendRef.current) return;
+      setExpanded(true);
       sendRef.current(skill.prompt, skill);
     }
     window.addEventListener(RUN_SKILL_EVENT, handler);
@@ -136,6 +185,9 @@ export function AgentPanel() {
       .map((m) => ({ role: m.role, content: m.content }));
     const containerId = loadContainer(useCategory);
 
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       const res = await fetch("/api/agent", {
         method: "POST",
@@ -148,6 +200,7 @@ export function AgentPanel() {
           ...(skill?.effort ? { effort: skill.effort } : {}),
           ...(skill?.maxTokens ? { maxTokens: skill.maxTokens } : {}),
         }),
+        signal: controller.signal,
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
@@ -216,10 +269,29 @@ export function AgentPanel() {
         }
       }
     } catch (e) {
-      setError((e as Error).message);
+      if ((e as Error).name === "AbortError") {
+        setMessages((prev) => {
+          if (prev.length === 0) return prev;
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (!last || last.role !== "assistant") return prev;
+          copy[copy.length - 1] = {
+            ...last,
+            content: last.content + (last.content ? "\n\n_[stopped]_" : "_[stopped]_"),
+          };
+          return copy;
+        });
+      } else {
+        setError((e as Error).message);
+      }
     } finally {
+      abortRef.current = null;
       setBusy(false);
     }
+  }
+
+  function stop() {
+    abortRef.current?.abort();
   }
 
   function clearThread() {
@@ -232,8 +304,8 @@ export function AgentPanel() {
     sendRef.current = send;
   });
 
-  return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 lg:col-span-3 flex flex-col min-h-[480px]">
+  const inner = (
+    <>
       <header className="flex items-center justify-between mb-3 gap-4 flex-wrap">
         <div className="flex items-center gap-4">
           <h2 className="text-sm font-medium uppercase tracking-wider text-zinc-400">
@@ -264,12 +336,22 @@ export function AgentPanel() {
               Clear
             </button>
           )}
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="text-xs px-2 py-1 rounded text-zinc-500 hover:text-zinc-300"
+            title={expanded ? "Collapse (⌘J / Esc)" : "Expand to drawer (⌘J)"}
+          >
+            {expanded ? "Collapse" : "Expand ⌘J"}
+          </button>
         </div>
       </header>
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto space-y-4 min-h-[280px] max-h-[520px] pr-2"
+        className={
+          "flex-1 overflow-y-auto overscroll-contain space-y-4 pr-2 " +
+          (expanded ? "min-h-0" : "min-h-[280px] max-h-[520px]")
+        }
       >
         {messages.length === 0 && (
           <p className="text-sm text-zinc-500">
@@ -333,14 +415,53 @@ export function AgentPanel() {
           disabled={busy}
           className="flex-1 bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-zinc-600 disabled:opacity-50"
         />
-        <button
-          type="submit"
-          disabled={busy || !input.trim()}
-          className="px-4 py-2 rounded-md bg-zinc-100 text-zinc-900 text-sm font-medium hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Send
-        </button>
+        {busy ? (
+          <button
+            type="button"
+            onClick={stop}
+            className="px-4 py-2 rounded-md bg-red-700 text-red-50 text-sm font-medium hover:bg-red-600 border border-red-600"
+            title="Stop the agent"
+          >
+            Stop
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="px-4 py-2 rounded-md bg-zinc-100 text-zinc-900 text-sm font-medium hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Send
+          </button>
+        )}
       </form>
+    </>
+  );
+
+  if (expanded && mounted) {
+    return (
+      <>
+        <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 lg:col-span-3 flex flex-col min-h-[480px] items-center justify-center text-sm text-zinc-500">
+          Agent open in drawer · ⌘J or Esc to close
+        </section>
+        {createPortal(
+          <div className="fixed inset-0 z-40 flex">
+            <div
+              className="flex-1 bg-black/60 backdrop-blur-sm"
+              onClick={() => setExpanded(false)}
+            />
+            <div className="w-full max-w-[760px] h-full bg-zinc-950 border-l border-zinc-800 p-5 flex flex-col shadow-2xl">
+              {inner}
+            </div>
+          </div>,
+          document.body,
+        )}
+      </>
+    );
+  }
+
+  return (
+    <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 lg:col-span-3 flex flex-col min-h-[480px]">
+      {inner}
     </section>
   );
 }
