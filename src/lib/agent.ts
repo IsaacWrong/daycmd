@@ -64,7 +64,7 @@ export type UsageTotals = {
 
 export async function* streamAgent(
   messages: ClientMessage[],
-  opts: { source?: string; category?: string } = {},
+  opts: { source?: string; category?: string; containerId?: string } = {},
 ): AsyncGenerator<{ type: string; data: unknown }> {
   if (!env.ANTHROPIC_API_KEY) {
     yield { type: "error", data: "ANTHROPIC_API_KEY not set in .env.local" };
@@ -73,6 +73,7 @@ export async function* streamAgent(
 
   const source = opts.source ?? "panel";
   const category = opts.category ?? "Personal";
+  let containerId: string | null = opts.containerId ?? null;
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
   const apiMessages: Anthropic.MessageParam[] = messages.map((m) => ({
@@ -109,8 +110,10 @@ export async function* streamAgent(
   }
 
   const MAX_ITERATIONS = 8;
+  try {
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
     const stream = client.messages.stream({
+      ...(containerId ? { container: containerId } : {}),
       model: MODEL,
       max_tokens: 16000,
       thinking: { type: "adaptive" },
@@ -119,7 +122,7 @@ export async function* streamAgent(
         {
           type: "text",
           text: SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral" },
+          cache_control: { type: "ephemeral", ttl: "1h" },
         },
       ],
       tools,
@@ -156,6 +159,12 @@ export async function* streamAgent(
 
     const final = await stream.finalMessage();
     apiMessages.push({ role: "assistant", content: final.content });
+
+    const newContainerId = (final as { container?: { id?: string } }).container?.id;
+    if (newContainerId && newContainerId !== containerId) {
+      containerId = newContainerId;
+      yield { type: "container", data: containerId };
+    }
 
     totals.input_tokens += final.usage.input_tokens ?? 0;
     totals.output_tokens += final.usage.output_tokens ?? 0;
@@ -218,6 +227,11 @@ export async function* streamAgent(
   recordUsage({ source, model: MODEL, ...totals });
   await logRaw();
   yield { type: "error", data: "max iterations reached" };
+  } catch (e) {
+    recordUsage({ source, model: MODEL, ...totals });
+    await logRaw();
+    yield { type: "error", data: (e as Error).message };
+  }
 }
 
 export async function runAgentOnce(

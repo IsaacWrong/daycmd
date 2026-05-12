@@ -5,12 +5,41 @@ import type { SkillDef } from "@/lib/skills-defs";
 import { UsageStrip } from "./UsageStrip";
 
 const CATEGORY_LS_KEY = "ai-os.agent.category";
+const MESSAGES_LS_KEY = (cat: string) => `ai-os.agent.messages.${cat}`;
+const CONTAINER_LS_KEY = (cat: string) => `ai-os.agent.container.${cat}`;
 
 type Msg = {
   role: "user" | "assistant";
   content: string;
   tools?: Array<{ name: string; ok?: boolean }>;
 };
+
+function loadMessages(cat: string): Msg[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(MESSAGES_LS_KEY(cat));
+    return raw ? (JSON.parse(raw) as Msg[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMessages(cat: string, msgs: Msg[]): void {
+  if (typeof window === "undefined") return;
+  if (msgs.length === 0) localStorage.removeItem(MESSAGES_LS_KEY(cat));
+  else localStorage.setItem(MESSAGES_LS_KEY(cat), JSON.stringify(msgs));
+}
+
+function loadContainer(cat: string): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(CONTAINER_LS_KEY(cat));
+}
+
+function saveContainer(cat: string, id: string | null): void {
+  if (typeof window === "undefined") return;
+  if (id) localStorage.setItem(CONTAINER_LS_KEY(cat), id);
+  else localStorage.removeItem(CONTAINER_LS_KEY(cat));
+}
 
 export function AgentPanel() {
   const [skills, setSkills] = useState<SkillDef[]>([]);
@@ -20,6 +49,7 @@ export function AgentPanel() {
   const [error, setError] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>(["Personal"]);
   const [category, setCategory] = useState("Personal");
+  const [hydrated, setHydrated] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,17 +62,33 @@ export function AgentPanel() {
       .then((j: { categories: Array<{ name: string }> }) => {
         const names = (j.categories ?? []).map((c) => c.name);
         if (names.length) setCategories(names);
-        const saved = typeof window !== "undefined" ? localStorage.getItem(CATEGORY_LS_KEY) : null;
-        if (saved && names.includes(saved)) setCategory(saved);
+        const saved =
+          typeof window !== "undefined"
+            ? localStorage.getItem(CATEGORY_LS_KEY)
+            : null;
+        const useCat = saved && names.includes(saved) ? saved : "Personal";
+        setCategory(useCat);
+        setMessages(loadMessages(useCat));
+        setHydrated(true);
       })
-      .catch(() => {});
+      .catch(() => setHydrated(true));
   }, []);
 
+  // Persist category choice
   useEffect(() => {
+    if (!hydrated) return;
     if (typeof window !== "undefined") {
       localStorage.setItem(CATEGORY_LS_KEY, category);
     }
-  }, [category]);
+    // When category changes, load that category's thread
+    setMessages(loadMessages(category));
+  }, [category, hydrated]);
+
+  // Persist messages on every change
+  useEffect(() => {
+    if (!hydrated) return;
+    saveMessages(category, messages);
+  }, [messages, category, hydrated]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -55,8 +101,11 @@ export function AgentPanel() {
     if (!content.trim() || busy) return;
     setError(null);
     const useCategory = overrideCategory ?? category;
+    // If we're firing into a non-active category, switch the UI to it
+    if (useCategory !== category) setCategory(useCategory);
+    const existing = useCategory === category ? messages : loadMessages(useCategory);
     const next: Msg[] = [
-      ...messages,
+      ...existing,
       { role: "user", content },
       { role: "assistant", content: "", tools: [] },
     ];
@@ -67,12 +116,17 @@ export function AgentPanel() {
     const apiMessages = next
       .slice(0, -1)
       .map((m) => ({ role: m.role, content: m.content }));
+    const containerId = loadContainer(useCategory);
 
     try {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: apiMessages, category: useCategory }),
+        body: JSON.stringify({
+          messages: apiMessages,
+          category: useCategory,
+          ...(containerId ? { containerId } : {}),
+        }),
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
@@ -119,11 +173,15 @@ export function AgentPanel() {
               const copy = [...prev];
               const last = copy[copy.length - 1];
               const tools = [...(last.tools ?? [])];
-              const idx = tools.findIndex((t) => t.name === d.name && t.ok === undefined);
+              const idx = tools.findIndex(
+                (t) => t.name === d.name && t.ok === undefined,
+              );
               if (idx >= 0) tools[idx] = { ...tools[idx], ok: d.ok };
               copy[copy.length - 1] = { ...last, tools };
               return copy;
             });
+          } else if (ev.type === "container") {
+            saveContainer(useCategory, String(ev.data));
           } else if (ev.type === "error") {
             setError(String(ev.data));
           }
@@ -134,6 +192,11 @@ export function AgentPanel() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function clearThread() {
+    setMessages([]);
+    saveContainer(category, null);
   }
 
   return (
@@ -151,7 +214,7 @@ export function AgentPanel() {
             onChange={(e) => setCategory(e.target.value)}
             disabled={busy}
             className="text-xs bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-200"
-            title="Category — every run logs to this category's raw/"
+            title="Category — each category has its own thread + raw/ log"
           >
             {categories.map((c) => (
               <option key={c} value={c}>
@@ -172,7 +235,7 @@ export function AgentPanel() {
           ))}
           {messages.length > 0 && (
             <button
-              onClick={() => setMessages([])}
+              onClick={clearThread}
               disabled={busy}
               className="text-xs px-2 py-1 rounded text-zinc-500 hover:text-zinc-300"
             >
@@ -188,8 +251,8 @@ export function AgentPanel() {
       >
         {messages.length === 0 && (
           <p className="text-sm text-zinc-500">
-            Ask anything. Or hit a skill button. Tools available: tasks, daily note,
-            inbox, calendar, GitHub, past notes.
+            Ask anything. Or hit a skill button. Each category has its own
+            thread.
           </p>
         )}
         {messages.map((m, i) => (
@@ -217,7 +280,10 @@ export function AgentPanel() {
               </div>
             )}
             <div className="whitespace-pre-wrap text-zinc-100 leading-relaxed">
-              {m.content || (m.role === "assistant" && busy && i === messages.length - 1 ? "…" : "")}
+              {m.content ||
+                (m.role === "assistant" && busy && i === messages.length - 1
+                  ? "…"
+                  : "")}
             </div>
           </div>
         ))}

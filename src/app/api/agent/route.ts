@@ -7,9 +7,11 @@ export async function POST(req: Request) {
   const body = (await req.json()) as {
     messages: ClientMessage[];
     category?: string;
+    containerId?: string;
   };
   const messages = body.messages ?? [];
   const category = body.category;
+  const containerId = body.containerId;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -18,7 +20,7 @@ export async function POST(req: Request) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
       };
       try {
-        for await (const ev of streamAgent(messages, { category })) {
+        for await (const ev of streamAgent(messages, { category, containerId })) {
           send(ev);
         }
       } catch (e) {
