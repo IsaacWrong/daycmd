@@ -10,6 +10,7 @@ export type ErrorRow = {
   source: string;
   message: string;
   context: string | null;
+  resolved_at: number | null;
 };
 
 const ERRORS_DIR = path.join(env.VAULT_PATH, "Errors");
@@ -61,10 +62,33 @@ export function logError(source: string, message: string, context?: unknown): vo
   vaultAppend(ts, source, message, context);
 }
 
-export function recentErrors(limit = 20): ErrorRow[] {
+export function recentErrors(limit = 20, includeResolved = false): ErrorRow[] {
+  if (includeResolved) {
+    return db
+      .prepare("SELECT * FROM error_log ORDER BY ts DESC LIMIT ?")
+      .all(limit) as ErrorRow[];
+  }
   return db
-    .prepare("SELECT * FROM error_log ORDER BY ts DESC LIMIT ?")
+    .prepare(
+      "SELECT * FROM error_log WHERE resolved_at IS NULL ORDER BY ts DESC LIMIT ?",
+    )
     .all(limit) as ErrorRow[];
+}
+
+export function resolveError(id: number): boolean {
+  const info = db
+    .prepare(
+      "UPDATE error_log SET resolved_at = ? WHERE id = ? AND resolved_at IS NULL",
+    )
+    .run(Date.now(), id);
+  return info.changes > 0;
+}
+
+export function unresolveError(id: number): boolean {
+  const info = db
+    .prepare("UPDATE error_log SET resolved_at = NULL WHERE id = ?")
+    .run(id);
+  return info.changes > 0;
 }
 
 export function clearErrors(): void {

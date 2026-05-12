@@ -28,6 +28,11 @@ type UsageResp = {
   daily: { date: string; tokens: number }[];
 };
 
+type SettingsResp = {
+  budgetDailyUsd: number;
+  budgetAlertPct: number;
+};
+
 function NumberRow({
   label,
   value,
@@ -66,6 +71,7 @@ export function TodayInNumbers() {
   const gh = usePoll<GhSummary | { error: string }>("/api/github", 60_000).data;
   const daily = usePoll<{ exists: boolean; content: string }>("/api/obsidian/daily", 60_000).data;
   const heat = usePoll<{ days: number[] }>("/api/heatmap", 90_000).data;
+  const settings = usePoll<SettingsResp>("/api/settings", 5 * 60_000).data;
 
   const today = new Date().toISOString().slice(0, 10);
   const todayTokens =
@@ -89,12 +95,52 @@ export function TodayInNumbers() {
   const fmtTokens = (n: number) =>
     n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 
+  const spend = usage?.today.cost ?? 0;
+  const cap = settings?.budgetDailyUsd ?? 0;
+  const alertPct = settings?.budgetAlertPct ?? 0.8;
+  const spendPct = cap > 0 ? Math.min(spend / cap, 1) : 0;
+  const overAlert = cap > 0 && spend / cap >= alertPct;
+  const overCap = cap > 0 && spend >= cap;
+  const spendTone = overCap
+    ? "var(--c-error)"
+    : overAlert
+      ? "var(--c-tasks)"
+      : "var(--c-good)";
+  const spendSub = cap > 0 ? `/ $${cap.toFixed(0)}` : "no cap";
+
   return (
     <SectionMini title="Today in numbers">
+      <div className="py-1.5">
+        <div className="flex items-center gap-2.5">
+          <span className="flex-1 text-[12.5px] text-fg-soft">Spend</span>
+          <span
+            className="t-num text-[15px] font-medium"
+            style={{ color: spendTone, letterSpacing: "-0.01em" }}
+          >
+            ${spend.toFixed(2)}
+          </span>
+          <span
+            className="t-mono text-[10px] text-fg-soft"
+            style={{ width: 64, textAlign: "right" }}
+          >
+            {spendSub}
+          </span>
+        </div>
+        {cap > 0 && (
+          <div
+            className="h-[3px] rounded-full overflow-hidden mt-1.5"
+            style={{ background: "oklch(from var(--fg) l c h / 0.08)" }}
+          >
+            <div
+              className="h-full rounded-full"
+              style={{ width: `${spendPct * 100}%`, background: spendTone }}
+            />
+          </div>
+        )}
+      </div>
       <NumberRow
         label="Tokens"
         value={fmtTokens(todayTokens)}
-        sub={`$${(usage?.today.cost ?? 0).toFixed(2)}`}
         tone="var(--c-agent)"
         spark={tokensWeek}
       />

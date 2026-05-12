@@ -62,6 +62,29 @@ function TaskRow({ t, onToggle }: { t: ObsidianTask; onToggle: (t: ObsidianTask)
   );
 }
 
+type Bucket = "overdue" | "today" | "upcoming" | "someday";
+
+function bucketOf(due: string | null, today: string): Bucket {
+  if (!due) return "someday";
+  if (due < today) return "overdue";
+  if (due === today) return "today";
+  return "upcoming";
+}
+
+const BUCKET_ORDER: Bucket[] = ["overdue", "today", "upcoming", "someday"];
+const BUCKET_LABEL: Record<Bucket, string> = {
+  overdue: "Overdue",
+  today: "Today",
+  upcoming: "Upcoming",
+  someday: "Someday",
+};
+const BUCKET_COLOR: Record<Bucket, string> = {
+  overdue: "var(--c-error)",
+  today: "var(--c-tasks)",
+  upcoming: "var(--fg-soft)",
+  someday: "var(--fg-soft)",
+};
+
 export function TaskList({ projectFilter }: { projectFilter?: string }) {
   const { data, refresh } = usePoll<{ tasks: ObsidianTask[] }>(
     "/api/obsidian/tasks",
@@ -73,8 +96,31 @@ export function TaskList({ projectFilter }: { projectFilter?: string }) {
     : all;
   const open = filtered.filter((t) => !t.done && !t.cancelled);
   const today = new Date().toISOString().slice(0, 10);
-  const due = open.filter((t) => t.due && t.due <= today).length;
-  const later = open.length - due;
+
+  const grouped: Record<Bucket, ObsidianTask[]> = {
+    overdue: [],
+    today: [],
+    upcoming: [],
+    someday: [],
+  };
+  for (const t of open) grouped[bucketOf(t.due, today)].push(t);
+
+  // Cap visible rows at 8 across buckets, prioritising overdue → today → upcoming.
+  let remaining = 8;
+  const visible: Record<Bucket, ObsidianTask[]> = {
+    overdue: [],
+    today: [],
+    upcoming: [],
+    someday: [],
+  };
+  for (const b of BUCKET_ORDER) {
+    const take = Math.min(grouped[b].length, remaining);
+    visible[b] = grouped[b].slice(0, take);
+    remaining -= take;
+    if (remaining <= 0) break;
+  }
+
+  const firstVisible = BUCKET_ORDER.find((b) => visible[b].length > 0);
 
   async function toggle(t: ObsidianTask) {
     if (t.done) return;
@@ -88,21 +134,62 @@ export function TaskList({ projectFilter }: { projectFilter?: string }) {
     } catch {}
   }
 
+  const headerRight = (
+    <span className="t-mono text-[11px] text-fg-soft">
+      {grouped.overdue.length > 0 && (
+        <span style={{ color: "var(--c-error)" }}>
+          {grouped.overdue.length} overdue
+        </span>
+      )}
+      {grouped.overdue.length > 0 &&
+        (grouped.today.length > 0 || grouped.upcoming.length > 0) &&
+        " · "}
+      {grouped.today.length > 0 && `${grouped.today.length} today`}
+      {grouped.today.length > 0 && grouped.upcoming.length > 0 && " · "}
+      {grouped.upcoming.length > 0 && `${grouped.upcoming.length} later`}
+    </span>
+  );
+
   return (
     <Section
       eyebrow="Today"
       title="Tasks"
       count={open.length}
       accent="tasks"
-      right={
-        <span className="t-mono text-[11px] text-fg-soft">
-          {due} due · {later} later
-        </span>
-      }
+      right={headerRight}
     >
-      {open.slice(0, 6).map((t) => (
-        <TaskRow key={t.id} t={t} onToggle={toggle} />
-      ))}
+      {BUCKET_ORDER.map((b) => {
+        const items = visible[b];
+        if (items.length === 0) return null;
+        const hidden = grouped[b].length - items.length;
+        return (
+          <div
+            key={b}
+            style={{ marginTop: b === firstVisible ? 0 : 10 }}
+          >
+            <div
+              className="t-mono uppercase mb-1 flex items-center gap-2"
+              style={{
+                fontSize: 9,
+                color: BUCKET_COLOR[b],
+                letterSpacing: "0.08em",
+              }}
+            >
+              <span>{BUCKET_LABEL[b]}</span>
+              {hidden > 0 && <span className="opacity-70">+{hidden}</span>}
+              {b !== firstVisible && (
+                <span
+                  className="flex-1 self-center"
+                  style={{ height: 1, background: "var(--rule)" }}
+                />
+              )}
+            </div>
+            {items.map((t) => (
+              <TaskRow key={t.id} t={t} onToggle={toggle} />
+            ))}
+          </div>
+        );
+      })}
       {open.length === 0 && (
         <p className="text-[13px] text-fg-soft py-1">All clear.</p>
       )}

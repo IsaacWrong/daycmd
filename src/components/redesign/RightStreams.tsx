@@ -380,31 +380,71 @@ function KnowledgeSection() {
 }
 
 function ErrorsSection() {
-  const { data } = usePoll<{ errors: ErrorRow[] }>("/api/errors", 60_000);
+  const { data, refresh } = usePoll<{ errors: ErrorRow[] }>("/api/errors", 60_000);
+  const [busy, setBusy] = useState<number | null>(null);
   const errs = (data?.errors ?? []).slice(0, 4);
+
+  async function resolve(id: number) {
+    setBusy(id);
+    try {
+      await fetch(`/api/errors/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ resolved: true }),
+      });
+      refresh();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <SectionMini title="Errors" count={errs.length} accent="error">
       {errs.map((e) => (
-        <div key={e.id} className="py-1" style={{ fontSize: 12, lineHeight: 1.45 }}>
-          <span
-            className="t-mono"
-            style={{ color: "var(--c-error)", fontSize: 11 }}
-          >
-            {e.source}
-          </span>
-          <span
-            className="t-mono float-right text-fg-soft"
-            style={{ fontSize: 11 }}
-          >
-            {ago(e.ts)}
-          </span>
-          <div className="text-fg-soft mt-0.5 truncate" style={{ fontSize: 11.5 }}>
-            {e.message}
+        <div
+          key={e.id}
+          className="group py-1 flex items-start gap-2"
+          style={{ fontSize: 12, lineHeight: 1.45 }}
+        >
+          <div className="flex-1 min-w-0">
+            <span
+              className="t-mono"
+              style={{ color: "var(--c-error)", fontSize: 11 }}
+            >
+              {e.source}
+            </span>
+            <span
+              className="t-mono float-right text-fg-soft"
+              style={{ fontSize: 11 }}
+            >
+              {ago(e.ts)}
+            </span>
+            <div className="text-fg-soft mt-0.5 truncate" style={{ fontSize: 11.5 }}>
+              {e.message}
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => resolve(e.id)}
+            disabled={busy === e.id}
+            title="Mark resolved"
+            className="t-mono hover:text-fg opacity-60 hover:opacity-100"
+            style={{
+              background: "transparent",
+              border: 0,
+              padding: 0,
+              fontSize: 14,
+              color: busy === e.id ? "var(--fg-soft)" : "var(--c-good)",
+              cursor: busy === e.id ? "wait" : "pointer",
+              lineHeight: 1,
+            }}
+          >
+            ✓
+          </button>
         </div>
       ))}
       {errs.length === 0 && (
-        <p className="text-[12px] text-fg-soft py-1">No recent errors.</p>
+        <p className="text-[12px] text-fg-soft py-1">No open errors.</p>
       )}
     </SectionMini>
   );
