@@ -1,14 +1,16 @@
 "use client";
 
-import Link from "next/link";
+import { useState } from "react";
 import { usePoll } from "@/lib/hooks";
 import { Arrow } from "./Glyph";
 import { Section } from "./Section";
+import { DailyNoteEditor } from "./DailyNoteEditor";
 
 type DailyResp = { path: string; content: string; exists: boolean; mtime: number };
 
 export function DailyNotePreview() {
-  const { data } = usePoll<DailyResp>("/api/obsidian/daily", 60_000);
+  const { data, refresh } = usePoll<DailyResp>("/api/obsidian/daily", 60_000);
+  const [open, setOpen] = useState(false);
   const lines = (data?.content ?? "").split("\n");
   const words = (data?.content ?? "").trim().split(/\s+/).filter(Boolean).length;
   const path = data?.path?.split("/").slice(-2).join("/") ?? "Daily/—";
@@ -62,19 +64,30 @@ export function DailyNotePreview() {
         {!data?.exists && (
           <div className="text-fg-soft text-[13.5px]">No entry yet today.</div>
         )}
-        <Link
-          href="/settings"
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
           className="flex items-center gap-1.5 text-[12px] text-fg-soft hover:text-fg"
           style={{
             marginTop: 12,
             paddingTop: 12,
             borderTop: "1px dashed var(--rule)",
             cursor: "pointer",
+            background: "transparent",
+            border: 0,
+            padding: "12px 0 0",
           }}
         >
           Continue writing <Arrow s={11} />
-        </Link>
+        </button>
       </div>
+      <DailyNoteEditor
+        open={open}
+        onClose={() => {
+          setOpen(false);
+          refresh();
+        }}
+      />
     </Section>
   );
 }
