@@ -102,13 +102,17 @@ export function AgentPanel() {
     if (!content.trim() || busy) return;
     setError(null);
     const useCategory = skill?.category ?? category;
-    if (useCategory !== category) setCategory(useCategory);
-    const existing = useCategory === category ? messages : loadMessages(useCategory);
+    const existing =
+      useCategory === category ? messages : loadMessages(useCategory);
     const next: Msg[] = [
       ...existing,
       { role: "user", content },
       { role: "assistant", content: "", tools: [] },
     ];
+    // Persist BEFORE switching category so the [category] effect's
+    // loadMessages() picks up the placeholder, not stale data.
+    saveMessages(useCategory, next);
+    if (useCategory !== category) setCategory(useCategory);
     setMessages(next);
     setInput("");
     setBusy(true);
@@ -152,18 +156,23 @@ export function AgentPanel() {
           if (ev.type === "text") {
             const delta = ev.data as string;
             setMessages((prev) => {
+              if (prev.length === 0) return prev;
               const copy = [...prev];
+              const last = copy[copy.length - 1];
+              if (!last) return prev;
               copy[copy.length - 1] = {
-                ...copy[copy.length - 1],
-                content: copy[copy.length - 1].content + delta,
+                ...last,
+                content: last.content + delta,
               };
               return copy;
             });
           } else if (ev.type === "tool_start") {
             const d = ev.data as { name: string };
             setMessages((prev) => {
+              if (prev.length === 0) return prev;
               const copy = [...prev];
               const last = copy[copy.length - 1];
+              if (!last) return prev;
               copy[copy.length - 1] = {
                 ...last,
                 tools: [...(last.tools ?? []), { name: d.name }],
@@ -173,8 +182,10 @@ export function AgentPanel() {
           } else if (ev.type === "tool_result") {
             const d = ev.data as { name: string; ok: boolean };
             setMessages((prev) => {
+              if (prev.length === 0) return prev;
               const copy = [...prev];
               const last = copy[copy.length - 1];
+              if (!last) return prev;
               const tools = [...(last.tools ?? [])];
               const idx = tools.findIndex(
                 (t) => t.name === d.name && t.ok === undefined,
