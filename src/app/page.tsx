@@ -6,6 +6,7 @@ import { GmailCard } from "@/components/GmailCard";
 import { CalendarCard } from "@/components/CalendarCard";
 import { AgentPanel } from "@/components/AgentPanel";
 import { AutomationsCard } from "@/components/AutomationsCard";
+import { KnowledgeCard } from "@/components/KnowledgeCard";
 
 export default function Home() {
   const today = format(new Date(), "EEEE, MMMM d");
@@ -19,6 +20,7 @@ export default function Home() {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <AgentPanel />
+        <KnowledgeCard />
         <AutomationsCard />
         <CalendarCard />
         <GmailCard />

@@ -1,15 +1,14 @@
-import { streamAgent, type ClientMessage } from "@/lib/agent";
+import { streamCompile } from "@/lib/kb-compile";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(req: Request) {
-  const body = (await req.json()) as {
-    messages: ClientMessage[];
-    category?: string;
-  };
-  const messages = body.messages ?? [];
-  const category = body.category;
+export async function POST(
+  _req: Request,
+  ctx: { params: Promise<{ category: string }> },
+) {
+  const { category } = await ctx.params;
+  const decoded = decodeURIComponent(category);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -18,7 +17,7 @@ export async function POST(req: Request) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
       };
       try {
-        for await (const ev of streamAgent(messages, { category })) {
+        for await (const ev of streamCompile(decoded)) {
           send(ev);
         }
       } catch (e) {

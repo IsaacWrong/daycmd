@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import type { SkillDef } from "@/lib/skills-defs";
 import { UsageStrip } from "./UsageStrip";
 
+const CATEGORY_LS_KEY = "ai-os.agent.category";
+
 type Msg = {
   role: "user" | "assistant";
   content: string;
@@ -16,6 +18,8 @@ export function AgentPanel() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [categories, setCategories] = useState<string[]>(["Personal"]);
+  const [category, setCategory] = useState("Personal");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -23,7 +27,22 @@ export function AgentPanel() {
       .then((r) => r.json())
       .then((j) => setSkills(j.skills ?? []))
       .catch(() => {});
+    fetch("/api/kb")
+      .then((r) => r.json())
+      .then((j: { categories: Array<{ name: string }> }) => {
+        const names = (j.categories ?? []).map((c) => c.name);
+        if (names.length) setCategories(names);
+        const saved = typeof window !== "undefined" ? localStorage.getItem(CATEGORY_LS_KEY) : null;
+        if (saved && names.includes(saved)) setCategory(saved);
+      })
+      .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(CATEGORY_LS_KEY, category);
+    }
+  }, [category]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -32,9 +51,10 @@ export function AgentPanel() {
     });
   }, [messages]);
 
-  async function send(content: string) {
+  async function send(content: string, overrideCategory?: string) {
     if (!content.trim() || busy) return;
     setError(null);
+    const useCategory = overrideCategory ?? category;
     const next: Msg[] = [
       ...messages,
       { role: "user", content },
@@ -52,7 +72,7 @@ export function AgentPanel() {
       const res = await fetch("/api/agent", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ messages: apiMessages }),
+        body: JSON.stringify({ messages: apiMessages, category: useCategory }),
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
 
@@ -126,12 +146,25 @@ export function AgentPanel() {
           <UsageStrip />
         </div>
         <div className="flex gap-1.5 flex-wrap">
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            disabled={busy}
+            className="text-xs bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-zinc-200"
+            title="Category — every run logs to this category's raw/"
+          >
+            {categories.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
           {skills.map((s) => (
             <button
               key={s.id}
               disabled={busy}
-              onClick={() => send(s.prompt)}
-              title={s.description}
+              onClick={() => send(s.prompt, s.category)}
+              title={`${s.description}${s.category ? ` (→ ${s.category})` : ""}`}
               className="text-xs px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-50"
             >
               {s.label}

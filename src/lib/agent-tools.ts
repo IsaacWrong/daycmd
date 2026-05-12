@@ -17,6 +17,15 @@ import {
   createReplyDraft,
   sendEmail,
 } from "./gmail";
+import {
+  listCategories,
+  writeRawIngest,
+  writeOutput,
+  readWikiIndex,
+  listWikiPages,
+  readWikiPage,
+  ensureCategory,
+} from "./kb";
 import { getEvents } from "./calendar";
 import { getSummary as getGithub } from "./github";
 
@@ -218,6 +227,70 @@ export const tools: Anthropic.Tool[] = [
       "Get GitHub state: PRs needing review, my open PRs, assigned issues, unread notifications.",
     input_schema: { type: "object", properties: {} },
   },
+  {
+    name: "kb_list_categories",
+    description:
+      "List all knowledge-base categories (folders under <vault>/Categories/).",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "kb_ingest",
+    description:
+      "Ingest material into a category's raw/ folder. Use when user gives you an article, paste, URL content, or anything worth preserving as source material. Returns the relative path.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: {
+          type: "string",
+          description: "Category name. If omitted, uses the current session category.",
+        },
+        title: { type: "string" },
+        content: { type: "string" },
+        source_url: { type: "string" },
+        source_type: {
+          type: "string",
+          description: "e.g. 'article', 'paper', 'call_notes', 'transcript', 'paste'.",
+        },
+      },
+      required: ["title", "content"],
+    },
+  },
+  {
+    name: "kb_query",
+    description:
+      "Query a category's wiki for context. Returns INDEX.md + list of all wiki pages. Use to ground responses in compiled knowledge before substantive work.",
+    input_schema: {
+      type: "object",
+      properties: { category: { type: "string" } },
+    },
+  },
+  {
+    name: "kb_read_wiki_page",
+    description:
+      "Read a specific wiki page. Path relative to wiki/, e.g. 'concepts/attention.md'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: { type: "string" },
+        path: { type: "string" },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "kb_write_output",
+    description:
+      "Save a finished deliverable (draft, report, summary, deck outline) to a category's output/ folder. NOT for capturing source material — that's kb_ingest.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: { type: "string" },
+        title: { type: "string" },
+        content: { type: "string" },
+      },
+      required: ["title", "content"],
+    },
+  },
 ];
 
 type ToolInput = Record<string, unknown>;
@@ -268,6 +341,7 @@ async function readPastDailyNotes(days: number) {
 export async function runTool(
   name: string,
   input: ToolInput,
+  ctx: { category?: string } = {},
 ): Promise<{ ok: true; result: unknown } | { ok: false; error: string }> {
   try {
     switch (name) {
@@ -358,6 +432,42 @@ export async function runTool(
       case "get_github_summary": {
         const s = await getGithub();
         return { ok: true, result: s };
+      }
+      case "kb_list_categories": {
+        const cats = await listCategories();
+        return { ok: true, result: { categories: cats, current: ctx.category } };
+      }
+      case "kb_ingest": {
+        const category = String(input.category ?? ctx.category ?? "Personal");
+        await ensureCategory(category);
+        const rel = await writeRawIngest({
+          category,
+          title: String(input.title),
+          content: String(input.content),
+          sourceUrl: input.source_url ? String(input.source_url) : undefined,
+          sourceType: input.source_type ? String(input.source_type) : undefined,
+        });
+        return { ok: true, result: { path: rel, category } };
+      }
+      case "kb_query": {
+        const category = String(input.category ?? ctx.category ?? "Personal");
+        const index = await readWikiIndex(category);
+        const pages = await listWikiPages(category);
+        return { ok: true, result: { category, index, pages } };
+      }
+      case "kb_read_wiki_page": {
+        const category = String(input.category ?? ctx.category ?? "Personal");
+        const content = await readWikiPage(category, String(input.path));
+        return { ok: true, result: { category, path: String(input.path), content } };
+      }
+      case "kb_write_output": {
+        const category = String(input.category ?? ctx.category ?? "Personal");
+        const rel = await writeOutput({
+          category,
+          title: String(input.title),
+          content: String(input.content),
+        });
+        return { ok: true, result: { path: rel, category } };
       }
       default:
         return { ok: false, error: `unknown tool: ${name}` };

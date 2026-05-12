@@ -70,6 +70,20 @@ export const db =
         FOREIGN KEY (automation_id) REFERENCES automations(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_runs_aid ON automation_runs(automation_id, started_at DESC);
+      CREATE TABLE IF NOT EXISTS kb_compiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category TEXT NOT NULL,
+        started_at INTEGER NOT NULL,
+        ended_at INTEGER,
+        ok INTEGER,
+        summary TEXT,
+        error TEXT,
+        input_tokens INTEGER DEFAULT 0,
+        output_tokens INTEGER DEFAULT 0,
+        cache_read_tokens INTEGER DEFAULT 0,
+        cache_write_tokens INTEGER DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_compiles_cat ON kb_compiles(category, started_at DESC);
     `);
     return d;
   })());
