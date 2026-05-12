@@ -1,53 +1,84 @@
-import { format } from "date-fns";
-import Link from "next/link";
-import { TasksCard } from "@/components/TasksCard";
-import { DailyNoteCard } from "@/components/DailyNoteCard";
-import { GitHubCard } from "@/components/GitHubCard";
-import { GmailCard } from "@/components/GmailCard";
-import { CalendarCard } from "@/components/CalendarCard";
-import { AgentPanel } from "@/components/AgentPanel";
-import { AutomationsCard } from "@/components/AutomationsCard";
-import { KnowledgeCard } from "@/components/KnowledgeCard";
-import { NowNext } from "@/components/NowNext";
-import { ErrorsCard } from "@/components/ErrorsCard";
-import { WeatherBadge } from "@/components/WeatherBadge";
-import { SkillsPanel } from "@/components/SkillsPanel";
-import { ProjectsCard } from "@/components/ProjectsCard";
-import { IdeaModal } from "@/components/IdeaModal";
+"use client";
+
+import { useFocusMode, useTod, TodFrame } from "@/components/redesign/TodFrame";
+import { Masthead } from "@/components/redesign/Masthead";
+import { FocusTile } from "@/components/redesign/FocusTile";
+import {
+  ProjectsList,
+  Streaks,
+  TodayInNumbers,
+} from "@/components/redesign/LeftSpineSections";
+import { Heatmap } from "@/components/redesign/Heatmap";
+import { SectionMini } from "@/components/redesign/Section";
+import { NowHero } from "@/components/redesign/NowHero";
+import { TaskList } from "@/components/redesign/TaskList";
+import { DailyNotePreview } from "@/components/redesign/DailyNotePreview";
+import { RightStreams } from "@/components/redesign/RightStreams";
+import { AgentBar, SkillStrip } from "@/components/redesign/AgentBar";
 
 export default function Home() {
-  const today = format(new Date(), "EEEE, MMMM d");
+  const tod = useTod();
+  const [focus, toggleFocus] = useFocusMode();
 
   return (
-    <main className="flex-1 px-8 py-10 max-w-[1600px] mx-auto w-full">
-      <header className="mb-6 flex items-baseline justify-between">
-        <h1 className="text-3xl font-semibold tracking-tight">AI OS</h1>
-        <div className="flex items-center gap-4">
-          <WeatherBadge />
-          <span className="text-sm text-zinc-400">{today}</span>
-          <Link href="/settings" className="text-xs text-zinc-500 hover:text-zinc-300">
-            Settings
-          </Link>
-        </div>
-      </header>
+    <TodFrame tod={tod} focus={focus}>
+      <Masthead tod={tod} />
 
-      <NowNext />
+      <div
+        className="grid"
+        style={{
+          flex: 1,
+          gridTemplateColumns: "300px 1fr 320px",
+          gap: 40,
+          padding: "20px 48px 140px",
+          minHeight: 0,
+        }}
+      >
+        <aside
+          className="scroll dimmable"
+          style={{
+            paddingRight: 18,
+            borderRight: "1px solid var(--rule)",
+          }}
+        >
+          <FocusTile />
+          <TodayInNumbers />
+          <Streaks />
+          <SectionMini title="Last 14 days · commits">
+            <Heatmap />
+          </SectionMini>
+          <ProjectsList />
+        </aside>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <ProjectsCard />
-        <AgentPanel />
-        <SkillsPanel />
-        <KnowledgeCard />
-        <AutomationsCard />
-        <CalendarCard />
-        <GmailCard />
-        <TasksCard />
-        <DailyNoteCard />
-        <GitHubCard />
-        <ErrorsCard />
+        <main className="scroll" style={{ overflowY: "auto", paddingRight: 8 }}>
+          <NowHero />
+          <div className="dimmable">
+            <TaskList />
+            <DailyNotePreview />
+          </div>
+        </main>
+
+        <RightStreams />
       </div>
 
-      <IdeaModal />
-    </main>
+      <div
+        className="focus-keep"
+        style={{
+          position: "fixed",
+          left: 48,
+          right: 48,
+          bottom: 22,
+          zIndex: 5,
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+        }}
+      >
+        <div style={{ opacity: focus ? 1 : 0.85, transition: "opacity 320ms ease" }}>
+          <SkillStrip />
+        </div>
+        <AgentBar variant="wide" focus={focus} onToggleFocus={toggleFocus} />
+      </div>
+    </TodFrame>
   );
 }

@@ -134,6 +134,45 @@ function splitRepo(slug: string): { owner: string; repo: string } | null {
   return { owner: parts[0], repo: parts[1] };
 }
 
+export async function getDailyCommitCounts(
+  repoSlugs: string[],
+  days = 14,
+): Promise<number[]> {
+  const counts = new Array(days).fill(0);
+  const gh = client();
+  if (!gh || repoSlugs.length === 0) return counts;
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - (days - 1));
+  const since = start.toISOString();
+  type RawCommit = { commit: { author: { date: string } | null } };
+  const results = await Promise.allSettled(
+    repoSlugs.map(async (slug) => {
+      const parts = splitRepo(slug);
+      if (!parts) return [];
+      const res = await gh.request("GET /repos/{owner}/{repo}/commits", {
+        owner: parts.owner,
+        repo: parts.repo,
+        since,
+        per_page: 100,
+      });
+      return res.data as RawCommit[];
+    }),
+  );
+  for (const r of results) {
+    if (r.status !== "fulfilled") continue;
+    for (const c of r.value) {
+      const date = c.commit.author?.date;
+      if (!date) continue;
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      const idx = Math.floor((d.getTime() - start.getTime()) / 86_400_000);
+      if (idx >= 0 && idx < days) counts[idx] += 1;
+    }
+  }
+  return counts;
+}
+
 export async function getRepoStats(slug: string): Promise<RepoStats> {
   const empty: RepoStats = {
     repo: slug,

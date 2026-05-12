@@ -59,6 +59,23 @@ export async function writeDailyNote(
   return stat.mtimeMs;
 }
 
+export async function appendToDailyNote(
+  text: string,
+  date = new Date(),
+): Promise<number> {
+  const p = dailyNotePath(date);
+  await fs.mkdir(path.dirname(p), { recursive: true });
+  let existing = "";
+  try {
+    existing = await fs.readFile(p, "utf8");
+  } catch {}
+  const sep = existing && !existing.endsWith("\n") ? "\n" : "";
+  const next = existing + sep + text + "\n";
+  await fs.writeFile(p, next, "utf8");
+  const stat = await fs.stat(p);
+  return stat.mtimeMs;
+}
+
 export async function writeDailyNoteIfUnchanged(
   content: string,
   expectedMtime: number,

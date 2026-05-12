@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readDailyNote, writeDailyNoteIfUnchanged } from "@/lib/obsidian";
+import { appendToDailyNote, readDailyNote, writeDailyNoteIfUnchanged } from "@/lib/obsidian";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +12,19 @@ export async function GET() {
       { error: (err as Error).message },
       { status: 500 },
     );
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const { text } = (await req.json()) as { text: string };
+    if (typeof text !== "string" || !text.trim()) {
+      return NextResponse.json({ error: "text required" }, { status: 400 });
+    }
+    const mtime = await appendToDailyNote(text);
+    return NextResponse.json({ ok: true, mtime });
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
 }
 
