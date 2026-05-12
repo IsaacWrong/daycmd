@@ -8,6 +8,24 @@ type Weather = {
   lo: number;
   code: number;
   city: string;
+  region: string;
+};
+
+const US_STATES: Record<string, string> = {
+  Alabama: "AL", Alaska: "AK", Arizona: "AZ", Arkansas: "AR",
+  California: "CA", Colorado: "CO", Connecticut: "CT", Delaware: "DE",
+  Florida: "FL", Georgia: "GA", Hawaii: "HI", Idaho: "ID",
+  Illinois: "IL", Indiana: "IN", Iowa: "IA", Kansas: "KS",
+  Kentucky: "KY", Louisiana: "LA", Maine: "ME", Maryland: "MD",
+  Massachusetts: "MA", Michigan: "MI", Minnesota: "MN", Mississippi: "MS",
+  Missouri: "MO", Montana: "MT", Nebraska: "NE", Nevada: "NV",
+  "New Hampshire": "NH", "New Jersey": "NJ", "New Mexico": "NM",
+  "New York": "NY", "North Carolina": "NC", "North Dakota": "ND",
+  Ohio: "OH", Oklahoma: "OK", Oregon: "OR", Pennsylvania: "PA",
+  "Rhode Island": "RI", "South Carolina": "SC", "South Dakota": "SD",
+  Tennessee: "TN", Texas: "TX", Utah: "UT", Vermont: "VT",
+  Virginia: "VA", Washington: "WA", "West Virginia": "WV",
+  Wisconsin: "WI", Wyoming: "WY", "District of Columbia": "DC",
 };
 
 const LS_LOC = "ai-os.weather.loc";
@@ -43,21 +61,36 @@ function iconFor(code: number): string {
   return ICONS[code] ?? "🌡";
 }
 
-async function reverseGeocode(lat: number, lon: number): Promise<string> {
+async function reverseGeocode(
+  lat: number,
+  lon: number,
+): Promise<{ city: string; region: string }> {
   try {
     const res = await fetch(
       `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&count=1`,
     );
-    const j = (await res.json()) as { results?: Array<{ name: string }> };
-    return j.results?.[0]?.name ?? `${lat.toFixed(1)},${lon.toFixed(1)}`;
+    const j = (await res.json()) as {
+      results?: Array<{
+        name: string;
+        admin1?: string;
+        country_code?: string;
+      }>;
+    };
+    const r = j.results?.[0];
+    if (!r) return { city: `${lat.toFixed(1)},${lon.toFixed(1)}`, region: "" };
+    let region = r.admin1 ?? "";
+    if (r.country_code === "US" && region && US_STATES[region]) {
+      region = US_STATES[region];
+    }
+    return { city: r.name, region };
   } catch {
-    return `${lat.toFixed(1)},${lon.toFixed(1)}`;
+    return { city: `${lat.toFixed(1)},${lon.toFixed(1)}`, region: "" };
   }
 }
 
 async function fetchWeather(lat: number, lon: number): Promise<Weather> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&temperature_unit=fahrenheit&timezone=auto&forecast_days=1`;
-  const [w, city] = await Promise.all([
+  const [w, place] = await Promise.all([
     fetch(url).then((r) => r.json()) as Promise<{
       current: { temperature_2m: number; weather_code: number };
       daily: {
@@ -72,7 +105,8 @@ async function fetchWeather(lat: number, lon: number): Promise<Weather> {
     hi: Math.round(w.daily.temperature_2m_max[0]),
     lo: Math.round(w.daily.temperature_2m_min[0]),
     code: w.current.weather_code,
-    city,
+    city: place.city,
+    region: place.region,
   };
 }
 
@@ -171,16 +205,20 @@ export function WeatherBadge() {
     );
   }
 
+  const place = weather.region ? `${weather.city}, ${weather.region}` : weather.city;
   return (
-    <span
-      className="text-xs text-zinc-300 flex items-center gap-1.5"
-      title={`${weather.city} · hi ${weather.hi}° / lo ${weather.lo}°`}
-    >
-      <span className="text-base leading-none">{iconFor(weather.code)}</span>
-      <span className="font-mono">{weather.tempF}°</span>
-      <span className="text-zinc-600 text-[10px] font-mono">
-        {weather.hi}/{weather.lo}
+    <div className="flex flex-col items-end leading-tight">
+      <span className="text-[10px] text-zinc-500">{place}</span>
+      <span
+        className="text-xs text-zinc-300 flex items-center gap-1.5"
+        title={`hi ${weather.hi}° / lo ${weather.lo}°`}
+      >
+        <span className="text-base leading-none">{iconFor(weather.code)}</span>
+        <span className="font-mono">{weather.tempF}°</span>
+        <span className="text-zinc-600 text-[10px] font-mono">
+          {weather.hi}/{weather.lo}
+        </span>
       </span>
-    </span>
+    </div>
   );
 }
