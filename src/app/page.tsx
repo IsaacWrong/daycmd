@@ -10,6 +10,7 @@ import { AutomationsCard } from "@/components/AutomationsCard";
 import { KnowledgeCard } from "@/components/KnowledgeCard";
 import { NowNext } from "@/components/NowNext";
 import { ErrorsCard } from "@/components/ErrorsCard";
+import { WeatherBadge } from "@/components/WeatherBadge";
 
 export default function Home() {
   const today = format(new Date(), "EEEE, MMMM d");
@@ -19,6 +20,7 @@ export default function Home() {
       <header className="mb-6 flex items-baseline justify-between">
         <h1 className="text-3xl font-semibold tracking-tight">AI OS</h1>
         <div className="flex items-center gap-4">
+          <WeatherBadge />
           <span className="text-sm text-zinc-400">{today}</span>
           <Link href="/settings" className="text-xs text-zinc-500 hover:text-zinc-300">
             Settings
