@@ -16,6 +16,7 @@ import {
   createDraft,
   createReplyDraft,
   sendEmail,
+  unsubscribeMessage,
 } from "./gmail";
 import {
   listCategories,
@@ -193,6 +194,16 @@ export const tools: Anthropic.Messages.ToolUnion[] = [
         body: { type: "string", description: "Plain text reply body." },
       },
       required: ["thread_id", "body"],
+    },
+  },
+  {
+    name: "gmail_unsubscribe",
+    description:
+      "Unsubscribe from a newsletter/marketing email using its List-Unsubscribe header. Tries one-click POST (RFC 8058) first, then mailto fallback. If neither is supported, returns the URL for the user to click manually. Result includes method ('one_click_post'|'mailto'|'manual_url'|'none') and ok flag. Recommended for newsletters during triage — actually removes future emails, not just hides current one. Pair with gmail_archive after success.",
+    input_schema: {
+      type: "object",
+      properties: { message_id: { type: "string" } },
+      required: ["message_id"],
     },
   },
   {
@@ -424,6 +435,10 @@ export async function runTool(
           subject: String(input.subject),
           body: String(input.body),
         });
+        return { ok: true, result: r };
+      }
+      case "gmail_unsubscribe": {
+        const r = await unsubscribeMessage(String(input.message_id));
         return { ok: true, result: r };
       }
       case "get_calendar": {

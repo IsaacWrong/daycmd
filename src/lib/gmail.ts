@@ -264,6 +264,92 @@ export async function createReplyDraft(input: {
   };
 }
 
+export type UnsubscribeResult =
+  | { ok: true; method: "one_click_post"; url: string }
+  | { ok: true; method: "mailto"; address: string }
+  | { ok: false; method: "manual_url"; url: string; reason: "no_one_click" }
+  | { ok: false; method: "none"; reason: "no_unsubscribe_header" }
+  | { ok: false; method: string; error: string };
+
+function parseUnsubscribeHeader(value: string): { urls: string[]; mailtos: string[] } {
+  const urls: string[] = [];
+  const mailtos: string[] = [];
+  const matches = value.match(/<([^>]+)>/g) ?? [];
+  for (const m of matches) {
+    const inner = m.slice(1, -1).trim();
+    if (inner.toLowerCase().startsWith("mailto:")) mailtos.push(inner.slice(7));
+    else if (/^https?:/i.test(inner)) urls.push(inner);
+  }
+  return { urls, mailtos };
+}
+
+export async function unsubscribeMessage(
+  messageId: string,
+): Promise<UnsubscribeResult> {
+  const gmail = await gmailClient();
+  const res = await gmail.users.messages.get({
+    userId: "me",
+    id: messageId,
+    format: "metadata",
+    metadataHeaders: ["List-Unsubscribe", "List-Unsubscribe-Post", "From", "Subject"],
+  });
+  const headers = res.data.payload?.headers ?? [];
+  const luHeader = header(headers, "List-Unsubscribe");
+  const lupHeader = header(headers, "List-Unsubscribe-Post");
+
+  if (!luHeader) {
+    return { ok: false, method: "none", reason: "no_unsubscribe_header" };
+  }
+
+  const { urls, mailtos } = parseUnsubscribeHeader(luHeader);
+  const oneClick = /one-click/i.test(lupHeader);
+
+  // Prefer one-click POST when supported
+  if (oneClick && urls.length > 0) {
+    const url = urls[0];
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "List-Unsubscribe=One-Click",
+      });
+      if (r.ok || (r.status >= 200 && r.status < 400)) {
+        return { ok: true, method: "one_click_post", url };
+      }
+      return { ok: false, method: "one_click_post", error: `HTTP ${r.status}` };
+    } catch (e) {
+      return { ok: false, method: "one_click_post", error: (e as Error).message };
+    }
+  }
+
+  // Fallback to mailto
+  if (mailtos.length > 0) {
+    try {
+      const from = await getMyAddress();
+      const raw = encodeRfc822({
+        to: mailtos[0],
+        from,
+        subject: "unsubscribe",
+        body: "Please remove this address from the mailing list.",
+      });
+      await gmail.users.messages.send({
+        userId: "me",
+        requestBody: { raw },
+      });
+      return { ok: true, method: "mailto", address: mailtos[0] };
+    } catch (e) {
+      return { ok: false, method: "mailto", error: (e as Error).message };
+    }
+  }
+
+  // Bare URL — needs human click
+  if (urls.length > 0) {
+    return { ok: false, method: "manual_url", url: urls[0], reason: "no_one_click" };
+  }
+
+  return { ok: false, method: "none", reason: "no_unsubscribe_header" };
+}
+
 export async function sendEmail(input: {
   to: string;
   subject: string;

@@ -30,7 +30,7 @@ export const SKILLS: SkillDef[] = [
     effort: "medium",
     maxTokens: 8000,
     prompt:
-      "Triage my entire inbox. First call get_inbox with query='in:inbox' and max=50 so you see EVERYTHING including Promotions/Social. State the total count. Then for each email suggest one of: archive, respond now (draft a 1-2 line reply via gmail_draft_reply), respond later (note in daily note), or trash (obvious junk). Execute the safe actions (archive, trash for clear spam, drafts for replies) — don't just propose. Be ruthless, most emails don't need a response.",
+      "Triage my entire inbox. First call get_inbox with query='in:inbox' and max=50 so you see EVERYTHING including Promotions/Social. State the total count.\n\nFor each email, pick one action and EXECUTE it (don't just propose):\n- Newsletter/marketing/promo → gmail_unsubscribe, then gmail_archive. If unsubscribe returns manual_url, list the URL at the end.\n- Obvious spam/junk → gmail_trash.\n- Needs my reply → gmail_draft_reply with a tight 1-2 line draft.\n- Already actioned / FYI → gmail_archive.\n- Truly important, needs me to decide → leave in inbox, note in summary.\n\nBatch tool calls — do many in one turn. End with a tight summary: counts by action + any manual unsubscribe URLs to click. Be ruthless. Most emails don't need a response.",
   },
   {
     id: "plan",
