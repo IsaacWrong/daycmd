@@ -36,6 +36,7 @@ import {
 import { getSummary as getGithub } from "./github";
 import { appendTask, markTaskDone } from "./tasks-writer";
 import { grepWiki, listOutputs } from "./kb";
+import { routeQuickCapture } from "./quick-capture";
 
 export const tools: Anthropic.Messages.ToolUnion[] = [
   { type: "web_search_20260209", name: "web_search" },
@@ -340,6 +341,12 @@ export const tools: Anthropic.Messages.ToolUnion[] = [
     },
   },
   {
+    name: "route_quick_capture",
+    description:
+      "Scan today's daily note Quick Capture section for lines tagged with #category (matched case-insensitive to existing categories). For each match, kb_ingest the line to that category's raw/ and remove it from Quick Capture. Returns {processed, unrouted}. Untagged lines stay.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "kb_list_outputs",
     description:
       "List recent finished deliverables in a category's output/ folder.",
@@ -615,6 +622,10 @@ export async function runTool(
         const category = String(input.category ?? ctx.category ?? "Personal");
         const matches = await grepWiki(category, String(input.query));
         return { ok: true, result: { category, query: String(input.query), matches } };
+      }
+      case "route_quick_capture": {
+        const r = await routeQuickCapture();
+        return { ok: true, result: r };
       }
       case "kb_list_outputs": {
         const category = String(input.category ?? ctx.category ?? "Personal");

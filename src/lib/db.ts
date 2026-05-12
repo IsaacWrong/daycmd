@@ -92,5 +92,15 @@ export const db =
     try {
       d.exec("ALTER TABLE automations ADD COLUMN target_category TEXT");
     } catch {}
+    d.exec(`
+      CREATE TABLE IF NOT EXISTS error_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts INTEGER NOT NULL,
+        source TEXT NOT NULL,
+        message TEXT NOT NULL,
+        context TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_error_log_ts ON error_log(ts DESC);
+    `);
     return d;
   })());

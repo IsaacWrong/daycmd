@@ -4,6 +4,7 @@ import os from "node:os";
 import { db } from "./db";
 import { runAgentOnce, type UsageTotals } from "./agent";
 import { streamCompile } from "./kb-compile";
+import { logError } from "./errors";
 
 export type AutomationKind = "agent" | "compile";
 
@@ -208,6 +209,7 @@ export async function runAutomation(id: number): Promise<AutomationRun> {
     db.prepare(
       "UPDATE automation_runs SET ended_at = ?, ok = 0, error = ? WHERE id = ?",
     ).run(Date.now(), (e as Error).message, runId);
+    logError(`automation:${a.name}`, (e as Error).message);
   }
 
   return db

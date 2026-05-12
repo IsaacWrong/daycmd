@@ -14,6 +14,7 @@ import {
   recordCompileEnd,
 } from "./kb";
 import { recordUsage } from "./usage";
+import { logError } from "./errors";
 
 const MODEL = "claude-sonnet-4-6";
 
@@ -300,6 +301,7 @@ export async function* streamCompile(
       error: (e as Error).message,
       usage: totals,
     });
+    logError(`kb_compile:${category}`, (e as Error).message);
     yield { type: "error", data: (e as Error).message };
   }
 }

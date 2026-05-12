@@ -8,6 +8,7 @@ import {
   readWikiPage,
 } from "./kb";
 import { recordUsage } from "./usage";
+import { logError } from "./errors";
 
 const MODEL = "claude-sonnet-4-6";
 
@@ -205,6 +206,7 @@ export async function* streamLint(
     yield { type: "done", data: null };
   } catch (e) {
     recordUsage({ source: `kb_lint:${category}`, model: MODEL, ...totals });
+    logError(`kb_lint:${category}`, (e as Error).message);
     yield { type: "error", data: (e as Error).message };
   }
 }

@@ -55,6 +55,39 @@ export const SKILLS: SkillDef[] = [
       "I'll give you a topic in my next message. Process:\n\n1. FIRST call kb_query('Research'). If the wiki has a page on this topic, read it and extend rather than start fresh.\n2. If wiki is empty or doesn't cover it: max 3 web_search queries (refine, don't shotgun) and web_fetch only the 3-5 strongest sources. STOP after 5 authoritative sources. Prefer 2024-2026 .gov / SEC / FINRA / authoritative trade press.\n3. Produce a tight markdown summary: lead with bottom line, then sections with key claims, where sources conflict, open questions. Cite every claim with [Title](url) inline.\n4. Then call kb_write_output to save the polished summary to Research/output/, AND kb_ingest the same content to raw/ for compile.\n\nDon't keep digging once you have enough. Don't write placeholders. Wait for the topic.",
   },
   {
+    id: "stale",
+    label: "Stale Tasks",
+    description: "Surface overdue and stuck tasks",
+    category: "Personal",
+    model: "claude-sonnet-4-6",
+    effort: "medium",
+    maxTokens: 4000,
+    prompt:
+      "Call get_tasks. Filter to open tasks with: due date before today, OR start date more than 3 days past, OR no progress signal (no recent matching daily note activity). Group into 'Overdue', 'Started but stalled', 'Forgotten'. For each, propose: reschedule, downgrade priority, or abandon. Be terse — one line per task.",
+  },
+  {
+    id: "reflect",
+    label: "Daily Reflection",
+    description: "Append journal prompts to today's daily note",
+    category: "Personal",
+    model: "claude-sonnet-4-6",
+    effort: "low",
+    maxTokens: 3000,
+    prompt:
+      "Append a 'Reflection' block to today's daily note Journal section. Use append_to_daily_note with section='Journal'. Format as:\n\n### Reflection · {time}\n\n**Moved:** (placeholder — Isaac fills)\n\n**Stuck:** (placeholder)\n\n**Learned:** (placeholder)\n\nDo NOT pull tools or fabricate content. Just append the structured prompt block. One write, done.",
+  },
+  {
+    id: "capture",
+    label: "Route Quick Capture",
+    description: "Process #tagged lines in daily note Quick Capture into category raw/",
+    category: "Personal",
+    model: "claude-sonnet-4-6",
+    effort: "low",
+    maxTokens: 2000,
+    prompt:
+      "Call route_quick_capture once. Report back the count routed per category and any unrouted lines with reason. Don't add commentary.",
+  },
+  {
     id: "weekly",
     label: "Weekly Review",
     description: "Summarize past 7 days from daily notes",

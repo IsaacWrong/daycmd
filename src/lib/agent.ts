@@ -1,8 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "./config";
 import { tools, runTool } from "./agent-tools";
-import { recordUsage } from "./usage";
+import { recordUsage, getTodaySpendUsd } from "./usage";
 import { writeRawAgentRun } from "./kb";
+import { getSettings } from "./settings";
+import { logError } from "./errors";
 
 export type ClientMessage = {
   role: "user" | "assistant";
@@ -103,6 +105,18 @@ export async function* streamAgent(
   if (!env.ANTHROPIC_API_KEY) {
     yield { type: "error", data: "ANTHROPIC_API_KEY not set in .env.local" };
     return;
+  }
+
+  // Hard budget cap check
+  const settings = getSettings();
+  if (settings.budgetDailyUsd > 0) {
+    const spent = getTodaySpendUsd();
+    if (spent >= settings.budgetDailyUsd) {
+      const msg = `Daily budget cap hit ($${spent.toFixed(2)} / $${settings.budgetDailyUsd}). Raise in Settings or wait until tomorrow.`;
+      logError("agent.budget", msg);
+      yield { type: "error", data: msg };
+      return;
+    }
   }
 
   const source = opts.source ?? "panel";
@@ -278,6 +292,7 @@ export async function* streamAgent(
   yield { type: "error", data: "max iterations reached" };
   } catch (e) {
     recordUsage({ source, model, ...totals });
+    logError(`agent:${source}`, (e as Error).message, { category, model });
     await logRaw();
     yield { type: "error", data: (e as Error).message };
   }
