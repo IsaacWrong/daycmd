@@ -31,6 +31,7 @@ const US_STATES: Record<string, string> = {
 const LS_LOC = "ai-os.weather.loc";
 const LS_DATA = "ai-os.weather.data";
 const CACHE_MS = 30 * 60_000;
+const REFRESH_MS = 15 * 60_000;
 
 const ICONS: Record<number, string> = {
   0: "☀",
@@ -158,14 +159,27 @@ export function WeatherBadge() {
     const cached = getCached();
     if (cached) setWeather(cached);
     const loc = getLoc();
-    if (loc) {
+    if (!loc) return;
+
+    let cancelled = false;
+    const tick = () => {
       fetchWeather(loc.lat, loc.lon)
         .then((w) => {
+          if (cancelled) return;
           saveCache(w);
           setWeather(w);
+          setError(null);
         })
-        .catch((e: Error) => setError(e.message));
-    }
+        .catch((e: Error) => {
+          if (!cancelled) setError(e.message);
+        });
+    };
+    tick();
+    const id = setInterval(tick, REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
 
   function requestLocation() {
