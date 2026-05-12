@@ -42,14 +42,22 @@ export async function POST() {
     if (s.driftCount === 0) continue;
     const stale = !s.lastCompileAt || now - s.lastCompileAt > STALE_MS;
     if (!stale) continue;
-    const a = automations.find(
+    const compileAuto = automations.find(
       (x) => x.kind === "compile" && x.target_category === s.name && x.enabled,
     );
-    if (!a) continue;
-    // Fire-and-forget — compile can take minutes.
-    runAutomation(a.id).catch((e) => {
-      console.error(`[auto-compile] ${s.name} failed:`, (e as Error).message);
-    });
+    if (!compileAuto) continue;
+    const lintAuto = automations.find(
+      (x) => x.kind === "lint" && x.target_category === s.name && x.enabled,
+    );
+    // Fire-and-forget — compile can take minutes; chain lint after it.
+    (async () => {
+      try {
+        await runAutomation(compileAuto.id);
+        if (lintAuto) await runAutomation(lintAuto.id);
+      } catch (e) {
+        console.error(`[auto-compile] ${s.name} failed:`, (e as Error).message);
+      }
+    })();
     fired.push(s.name);
   }
 

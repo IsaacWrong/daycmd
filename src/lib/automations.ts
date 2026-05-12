@@ -183,6 +183,20 @@ export async function runAutomation(id: number): Promise<AutomationRun> {
         else if (ev.type === "done") {
           const d = ev.data as { summary?: string };
           if (d?.summary) output = `${d.summary}\n\n${output}`.trim();
+        } else if (ev.type === "lint_result" && a.kind === "lint") {
+          const d = ev.data as {
+            findings?: Array<{ type: string; location: string; description: string }>;
+            summary?: string;
+          };
+          const findings = d.findings ?? [];
+          for (const f of findings) {
+            logError(
+              `kb_lint:${a.target_category}:${f.type}`,
+              `${f.location} — ${f.description}`,
+              { category: a.target_category, finding: f },
+            );
+          }
+          if (d.summary) output = `${d.summary}\n\n${output}`.trim();
         }
       }
       result = { ok: !error, output, error, usage };
