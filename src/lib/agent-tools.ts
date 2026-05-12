@@ -71,13 +71,18 @@ export const tools: Anthropic.Tool[] = [
   {
     name: "get_inbox",
     description:
-      "Get recent inbox messages from Gmail (excludes Promotions/Social). Returns message id, thread id, sender, subject, snippet, unread flag. Use message id for actions.",
+      "Get Gmail messages. Returns {messages, query, returned, estimatedTotal}. Use estimatedTotal to verify you have the full set — if returned < estimatedTotal, increase max or paginate. For full inbox triage, override query='in:inbox' (no category filter). Default query excludes Promotions/Social.",
     input_schema: {
       type: "object",
       properties: {
         max: {
           type: "integer",
-          description: "Max messages to return (1-25). Default 10.",
+          description: "Max messages to return (1-50). Default 10. Use higher for triage.",
+        },
+        query: {
+          type: "string",
+          description:
+            "Gmail search query. Defaults to 'in:inbox -category:promotions -category:social'. Override with e.g. 'in:inbox' (all), 'is:unread', 'in:inbox category:primary', 'from:foo@bar.com', etc.",
         },
       },
     },
@@ -290,8 +295,9 @@ export async function runTool(
       }
       case "get_inbox": {
         const max = Number(input.max ?? 10);
-        const messages = await getInbox(Math.max(1, Math.min(25, max)));
-        return { ok: true, result: messages };
+        const query = input.query ? String(input.query) : undefined;
+        const result = await getInbox({ max, query });
+        return { ok: true, result };
       }
       case "gmail_get_message": {
         const detail = await getMessageDetail(String(input.message_id));

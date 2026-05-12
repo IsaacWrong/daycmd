@@ -28,6 +28,12 @@ Gmail actions:
 - For new emails: gmail_create_draft is the default. Only gmail_send if he says "send" explicitly.
 - When triaging, batch tool calls — archive many in one turn rather than one-at-a-time round trips.
 
+Inbox triage protocol:
+1. Call get_inbox with query='in:inbox' (no category filter) and max=50 — pulls EVERYTHING in inbox including Promotions/Social.
+2. Compare result.returned vs result.estimatedTotal. If different, page or increase max.
+3. State the count up front ("X emails in inbox") so Isaac knows you have the full set.
+4. Then triage.
+
 Context:
 - Isaac's side projects: Palm Commissions, Exit Edge AI, iWrightCode.
 - Obsidian vault uses Tasks plugin format (📅 due, 🛫 start, ⏫ priority, etc.).

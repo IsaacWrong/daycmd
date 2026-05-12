@@ -18,7 +18,7 @@ export const SKILLS: SkillDef[] = [
     label: "Triage Inbox",
     description: "Classify recent emails and propose actions",
     prompt:
-      "Triage my inbox. Pull recent unread messages and for each, suggest one of: archive, respond now (draft a 1-2 line reply), respond later (add to tasks), or read later. Be ruthless — most emails don't need a response.",
+      "Triage my entire inbox. First call get_inbox with query='in:inbox' and max=50 so you see EVERYTHING including Promotions/Social. State the total count. Then for each email suggest one of: archive, respond now (draft a 1-2 line reply via gmail_draft_reply), respond later (note in daily note), or trash (obvious junk). Execute the safe actions (archive, trash for clear spam, drafts for replies) — don't just propose. Be ruthless, most emails don't need a response.",
   },
   {
     id: "plan",

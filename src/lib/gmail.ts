@@ -28,12 +28,23 @@ async function gmailClient() {
   return google.gmail({ version: "v1", auth });
 }
 
-export async function getInbox(max = 10): Promise<GmailMsg[]> {
+export type InboxResult = {
+  messages: GmailMsg[];
+  query: string;
+  returned: number;
+  estimatedTotal: number;
+};
+
+export async function getInbox(
+  opts: { max?: number; query?: string } = {},
+): Promise<InboxResult> {
   const gmail = await gmailClient();
+  const max = Math.max(1, Math.min(50, opts.max ?? 10));
+  const q = opts.query ?? "in:inbox -category:promotions -category:social";
 
   const list = await gmail.users.messages.list({
     userId: "me",
-    q: "in:inbox -category:promotions -category:social",
+    q,
     maxResults: max,
   });
 
@@ -49,7 +60,7 @@ export async function getInbox(max = 10): Promise<GmailMsg[]> {
     ),
   );
 
-  return msgs.map((r): GmailMsg => {
+  const messages = msgs.map((r): GmailMsg => {
     const d = r.data;
     const headers = d.payload?.headers ?? [];
     return {
@@ -63,6 +74,13 @@ export async function getInbox(max = 10): Promise<GmailMsg[]> {
       url: `https://mail.google.com/mail/u/0/#inbox/${d.threadId}`,
     };
   });
+
+  return {
+    messages,
+    query: q,
+    returned: messages.length,
+    estimatedTotal: list.data.resultSizeEstimate ?? messages.length,
+  };
 }
 
 export async function getMessageDetail(messageId: string): Promise<{
