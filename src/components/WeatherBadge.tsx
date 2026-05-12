@@ -67,24 +67,28 @@ async function reverseGeocode(
 ): Promise<{ city: string; region: string }> {
   try {
     const res = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&count=1`,
+      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`,
     );
     const j = (await res.json()) as {
-      results?: Array<{
-        name: string;
-        admin1?: string;
-        country_code?: string;
-      }>;
+      city?: string;
+      locality?: string;
+      principalSubdivision?: string;
+      principalSubdivisionCode?: string; // e.g. "US-KY"
+      countryCode?: string;
     };
-    const r = j.results?.[0];
-    if (!r) return { city: `${lat.toFixed(1)},${lon.toFixed(1)}`, region: "" };
-    let region = r.admin1 ?? "";
-    if (r.country_code === "US" && region && US_STATES[region]) {
-      region = US_STATES[region];
+    const city = j.city || j.locality || "";
+    let region = "";
+    if (j.countryCode === "US" && j.principalSubdivisionCode) {
+      region = j.principalSubdivisionCode.replace(/^US-/, "");
+    } else if (j.countryCode === "US" && j.principalSubdivision) {
+      region = US_STATES[j.principalSubdivision] ?? j.principalSubdivision;
+    } else {
+      region = j.principalSubdivision ?? "";
     }
-    return { city: r.name, region };
+    if (!city) return { city: `${lat.toFixed(1)}, ${lon.toFixed(1)}`, region };
+    return { city, region };
   } catch {
-    return { city: `${lat.toFixed(1)},${lon.toFixed(1)}`, region: "" };
+    return { city: `${lat.toFixed(1)}, ${lon.toFixed(1)}`, region: "" };
   }
 }
 
