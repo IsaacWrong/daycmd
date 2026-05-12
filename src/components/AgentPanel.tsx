@@ -98,11 +98,10 @@ export function AgentPanel() {
     });
   }, [messages]);
 
-  async function send(content: string, overrideCategory?: string) {
+  async function send(content: string, skill?: SkillDef) {
     if (!content.trim() || busy) return;
     setError(null);
-    const useCategory = overrideCategory ?? category;
-    // If we're firing into a non-active category, switch the UI to it
+    const useCategory = skill?.category ?? category;
     if (useCategory !== category) setCategory(useCategory);
     const existing = useCategory === category ? messages : loadMessages(useCategory);
     const next: Msg[] = [
@@ -127,6 +126,9 @@ export function AgentPanel() {
           messages: apiMessages,
           category: useCategory,
           ...(containerId ? { containerId } : {}),
+          ...(skill?.model ? { model: skill.model } : {}),
+          ...(skill?.effort ? { effort: skill.effort } : {}),
+          ...(skill?.maxTokens ? { maxTokens: skill.maxTokens } : {}),
         }),
       });
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
@@ -227,7 +229,7 @@ export function AgentPanel() {
             <button
               key={s.id}
               disabled={busy}
-              onClick={() => send(s.prompt, s.category)}
+              onClick={() => send(s.prompt, s)}
               title={`${s.description}${s.category ? ` (→ ${s.category})` : ""}`}
               className="text-xs px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 disabled:opacity-50"
             >

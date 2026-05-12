@@ -8,10 +8,16 @@ export async function POST(req: Request) {
     messages: ClientMessage[];
     category?: string;
     containerId?: string;
+    model?: string;
+    effort?: "low" | "medium" | "high" | "xhigh" | "max";
+    maxTokens?: number;
   };
   const messages = body.messages ?? [];
   const category = body.category;
   const containerId = body.containerId;
+  const model = body.model;
+  const effort = body.effort;
+  const maxTokens = body.maxTokens;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -20,7 +26,13 @@ export async function POST(req: Request) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
       };
       try {
-        for await (const ev of streamAgent(messages, { category, containerId })) {
+        for await (const ev of streamAgent(messages, {
+          category,
+          containerId,
+          model,
+          effort,
+          maxTokens,
+        })) {
           send(ev);
         }
       } catch (e) {

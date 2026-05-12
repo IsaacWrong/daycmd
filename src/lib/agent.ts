@@ -61,7 +61,18 @@ Knowledge base (Karpathy 3-tier per category):
 - kb_write_output when you produce a deliverable (drafted report, summary worth keeping, deck outline) — lands in output/. Don't kb_write_output for chat replies — only for things he'll come back to.
 - The wiki is compiled by a separate user-triggered pass. Don't try to write to wiki/ directly.`;
 
-const MODEL = "claude-opus-4-7";
+const DEFAULT_MODEL = "claude-opus-4-7";
+const DEFAULT_EFFORT: "high" = "high";
+const DEFAULT_MAX_TOKENS = 16000;
+type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+
+function clampEffort(model: string, effort: Effort): Effort {
+  // Sonnet 4.6 / Haiku don't support xhigh or max — clamp to high.
+  if (model.startsWith("claude-sonnet") || model.startsWith("claude-haiku")) {
+    if (effort === "xhigh" || effort === "max") return "high";
+  }
+  return effort;
+}
 
 export type UsageTotals = {
   input_tokens: number;
@@ -72,7 +83,14 @@ export type UsageTotals = {
 
 export async function* streamAgent(
   messages: ClientMessage[],
-  opts: { source?: string; category?: string; containerId?: string } = {},
+  opts: {
+    source?: string;
+    category?: string;
+    containerId?: string;
+    model?: string;
+    effort?: Effort;
+    maxTokens?: number;
+  } = {},
 ): AsyncGenerator<{ type: string; data: unknown }> {
   if (!env.ANTHROPIC_API_KEY) {
     yield { type: "error", data: "ANTHROPIC_API_KEY not set in .env.local" };
@@ -81,6 +99,9 @@ export async function* streamAgent(
 
   const source = opts.source ?? "panel";
   const category = opts.category ?? "Personal";
+  const model = opts.model ?? DEFAULT_MODEL;
+  const effort = clampEffort(model, opts.effort ?? DEFAULT_EFFORT);
+  const maxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS;
   let containerId: string | null = opts.containerId ?? null;
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
@@ -106,7 +127,7 @@ export async function* streamAgent(
         category,
         prompt: userPrompt,
         output: collectedText,
-        model: MODEL,
+        model,
         tools: toolsUsed,
         usage: totals,
         source,
@@ -122,10 +143,10 @@ export async function* streamAgent(
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
     const stream = client.messages.stream({
       ...(containerId ? { container: containerId } : {}),
-      model: MODEL,
-      max_tokens: 16000,
+      model,
+      max_tokens: maxTokens,
       thinking: { type: "adaptive" },
-      output_config: { effort: "high" },
+      output_config: { effort },
       system: [
         {
           type: "text",
@@ -192,7 +213,7 @@ export async function* streamAgent(
     totals.cache_write_tokens += final.usage.cache_creation_input_tokens ?? 0;
 
     if (final.stop_reason === "end_turn") {
-      recordUsage({ source, model: MODEL, ...totals });
+      recordUsage({ source, model, ...totals });
       await logRaw();
       yield { type: "usage", data: totals };
       yield { type: "done", data: { category } };
@@ -207,7 +228,7 @@ export async function* streamAgent(
     }
 
     if (final.stop_reason !== "tool_use") {
-      recordUsage({ source, model: MODEL, ...totals });
+      recordUsage({ source, model, ...totals });
       await logRaw();
       yield {
         type: "error",
@@ -244,11 +265,11 @@ export async function* streamAgent(
     apiMessages.push({ role: "user", content: results });
   }
 
-  recordUsage({ source, model: MODEL, ...totals });
+  recordUsage({ source, model, ...totals });
   await logRaw();
   yield { type: "error", data: "max iterations reached" };
   } catch (e) {
-    recordUsage({ source, model: MODEL, ...totals });
+    recordUsage({ source, model, ...totals });
     await logRaw();
     yield { type: "error", data: (e as Error).message };
   }
@@ -256,7 +277,13 @@ export async function* streamAgent(
 
 export async function runAgentOnce(
   prompt: string,
-  opts: { source: string; category?: string },
+  opts: {
+    source: string;
+    category?: string;
+    model?: string;
+    effort?: Effort;
+    maxTokens?: number;
+  },
 ): Promise<{
   ok: boolean;
   output: string;
@@ -271,7 +298,17 @@ export async function runAgentOnce(
     cache_read_tokens: 0,
     cache_write_tokens: 0,
   };
-  for await (const ev of streamAgent([{ role: "user", content: prompt }], opts)) {
+  // Default automations to cheaper Sonnet unless caller overrides.
+  const runOpts = {
+    model: "claude-sonnet-4-6",
+    effort: "medium" as Effort,
+    maxTokens: 8000,
+    ...opts,
+  };
+  for await (const ev of streamAgent(
+    [{ role: "user", content: prompt }],
+    runOpts,
+  )) {
     if (ev.type === "text") output += ev.data as string;
     else if (ev.type === "error") error = String(ev.data);
     else if (ev.type === "usage") usage = ev.data as UsageTotals;

@@ -15,7 +15,7 @@ import {
 } from "./kb";
 import { recordUsage } from "./usage";
 
-const MODEL = "claude-opus-4-7";
+const MODEL = "claude-sonnet-4-6";
 
 const tools: Anthropic.Tool[] = [
   {
@@ -171,9 +171,9 @@ export async function* streamCompile(
     for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
       const stream = client.messages.stream({
         model: MODEL,
-        max_tokens: 32000,
+        max_tokens: 16000,
         thinking: { type: "adaptive" },
-        output_config: { effort: "xhigh" },
+        output_config: { effort: "high" },
         system: [
           {
             type: "text",
