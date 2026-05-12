@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { SkillDef } from "@/lib/skills-defs";
 import { UsageStrip } from "./UsageStrip";
+import { Markdown } from "./Markdown";
 
 const CATEGORY_LS_KEY = "ai-os.agent.category";
 const MESSAGES_LS_KEY = (cat: string) => `ai-os.agent.messages.${cat}`;
@@ -279,12 +280,17 @@ export function AgentPanel() {
                 ))}
               </div>
             )}
-            <div className="whitespace-pre-wrap text-zinc-100 leading-relaxed">
-              {m.content ||
-                (m.role === "assistant" && busy && i === messages.length - 1
-                  ? "…"
-                  : "")}
-            </div>
+            {m.role === "assistant" ? (
+              m.content ? (
+                <Markdown>{m.content}</Markdown>
+              ) : busy && i === messages.length - 1 ? (
+                <span className="text-zinc-500">…</span>
+              ) : null
+            ) : (
+              <div className="whitespace-pre-wrap text-zinc-100 leading-relaxed">
+                {m.content}
+              </div>
+            )}
           </div>
         ))}
       </div>
