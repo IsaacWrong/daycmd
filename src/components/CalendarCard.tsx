@@ -205,6 +205,19 @@ export function CalendarCard() {
         </a>
       )}
 
+      {connected && formError && /reconnect/i.test(formError) && (
+        <button
+          type="button"
+          onClick={async () => {
+            await fetch("/api/auth/google/status", { method: "DELETE" });
+            window.location.href = "/api/auth/google";
+          }}
+          className="mb-2 text-xs px-2 py-1 rounded bg-amber-900/60 border border-amber-700 text-amber-100 hover:bg-amber-900"
+        >
+          Reconnect Google (grant write scope)
+        </button>
+      )}
+
       {data && "events" in data && (
         <div className="space-y-4">
           {(["today", "tomorrow", "later"] as const).map((bucket) => {
