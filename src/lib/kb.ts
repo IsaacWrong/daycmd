@@ -337,6 +337,57 @@ export async function readRawFile(
   );
 }
 
+export async function listOutputs(
+  category: string,
+  limit = 20,
+): Promise<Array<{ name: string; path: string; mtime: number }>> {
+  const dir = path.join(categoryPath(category), "output");
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    const out: Array<{ name: string; path: string; mtime: number }> = [];
+    for (const e of entries) {
+      if (!e.isFile() || !e.name.endsWith(".md")) continue;
+      const st = await fs.stat(path.join(dir, e.name));
+      out.push({
+        name: e.name,
+        path: path.relative(env.VAULT_PATH, path.join(dir, e.name)),
+        mtime: st.mtimeMs,
+      });
+    }
+    return out.sort((a, b) => b.mtime - a.mtime).slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+export async function grepWiki(
+  category: string,
+  query: string,
+  limit = 25,
+): Promise<Array<{ path: string; line: number; snippet: string }>> {
+  if (!query.trim()) return [];
+  const root = path.join(categoryPath(category), "wiki");
+  const pages = await listWikiPages(category);
+  const re = new RegExp(query, "i");
+  const out: Array<{ path: string; line: number; snippet: string }> = [];
+  for (const rel of pages) {
+    try {
+      const content = await fs.readFile(path.join(root, rel), "utf8");
+      const lines = content.split("\n");
+      lines.forEach((line, i) => {
+        if (out.length >= limit) return;
+        if (re.test(line)) {
+          out.push({ path: rel, line: i + 1, snippet: line.slice(0, 200) });
+        }
+      });
+      if (out.length >= limit) break;
+    } catch {
+      // skip unreadable
+    }
+  }
+  return out;
+}
+
 export async function readSchema(category: string): Promise<string> {
   try {
     const cat = await fs.readFile(

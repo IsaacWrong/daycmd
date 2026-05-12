@@ -85,5 +85,12 @@ export const db =
       );
       CREATE INDEX IF NOT EXISTS idx_compiles_cat ON kb_compiles(category, started_at DESC);
     `);
+    // Migrations for older databases
+    try {
+      d.exec("ALTER TABLE automations ADD COLUMN kind TEXT NOT NULL DEFAULT 'agent'");
+    } catch {}
+    try {
+      d.exec("ALTER TABLE automations ADD COLUMN target_category TEXT");
+    } catch {}
     return d;
   })());

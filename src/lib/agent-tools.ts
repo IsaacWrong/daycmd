@@ -27,8 +27,15 @@ import {
   readWikiPage,
   ensureCategory,
 } from "./kb";
-import { getEvents } from "./calendar";
+import {
+  getEvents,
+  createEvent,
+  rescheduleEvent,
+  cancelEvent,
+} from "./calendar";
 import { getSummary as getGithub } from "./github";
+import { appendTask, markTaskDone } from "./tasks-writer";
+import { grepWiki, listOutputs } from "./kb";
 
 export const tools: Anthropic.Messages.ToolUnion[] = [
   { type: "web_search_20260209", name: "web_search" },
@@ -241,6 +248,110 @@ export const tools: Anthropic.Messages.ToolUnion[] = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "calendar_create_event",
+    description:
+      "Create a Google Calendar event on the primary calendar. Times are ISO 8601 (e.g. '2026-05-12T15:00:00-04:00'). Returns event id + html link.",
+    input_schema: {
+      type: "object",
+      properties: {
+        summary: { type: "string", description: "Event title." },
+        start: { type: "string", description: "ISO 8601 start datetime." },
+        end: { type: "string", description: "ISO 8601 end datetime." },
+        description: { type: "string" },
+        location: { type: "string" },
+        attendees: {
+          type: "array",
+          items: { type: "string" },
+          description: "Email addresses.",
+        },
+      },
+      required: ["summary", "start", "end"],
+    },
+  },
+  {
+    name: "calendar_reschedule_event",
+    description: "Move an existing event to a new start/end (ISO 8601).",
+    input_schema: {
+      type: "object",
+      properties: {
+        event_id: { type: "string" },
+        start: { type: "string" },
+        end: { type: "string" },
+      },
+      required: ["event_id", "start", "end"],
+    },
+  },
+  {
+    name: "calendar_cancel_event",
+    description: "Delete an event from the primary calendar. Irreversible — confirm with user first.",
+    input_schema: {
+      type: "object",
+      properties: { event_id: { type: "string" } },
+      required: ["event_id"],
+    },
+  },
+  {
+    name: "task_create",
+    description:
+      "Add an Obsidian task to a file in <vault>/Tasks/. Format follows Obsidian Tasks plugin (📅 due, 🛫 start, ⏳ scheduled, priority emoji). Default file: 'Inbox'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "Task text (without [ ] prefix)." },
+        file: {
+          type: "string",
+          description: "File in Tasks/ folder, no extension (e.g. 'Personal', 'Work', 'Side Projects'). Defaults to 'Inbox'.",
+        },
+        due: { type: "string", description: "YYYY-MM-DD." },
+        start: { type: "string" },
+        scheduled: { type: "string" },
+        priority: {
+          type: "string",
+          enum: ["highest", "high", "medium", "low", "lowest"],
+        },
+      },
+      required: ["text"],
+    },
+  },
+  {
+    name: "task_done",
+    description:
+      "Mark an Obsidian task as done in a Tasks/ file. Matches by substring of task text. Sets ✅ done date to today. Returns count of matched lines.",
+    input_schema: {
+      type: "object",
+      properties: {
+        file: { type: "string", description: "Tasks file (e.g. 'Personal')." },
+        text: { type: "string", description: "Substring of the task to match." },
+      },
+      required: ["file", "text"],
+    },
+  },
+  {
+    name: "kb_grep",
+    description:
+      "Search the wiki of a category by regex/string (case-insensitive). Returns matches with path, line number, snippet. Use this to find compiled knowledge fast before reading full pages.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: { type: "string" },
+        query: { type: "string", description: "Regex or substring." },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "kb_list_outputs",
+    description:
+      "List recent finished deliverables in a category's output/ folder.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: { type: "string" },
+        limit: { type: "integer" },
+      },
+    },
+  },
+  {
     name: "kb_list_categories",
     description:
       "List all knowledge-base categories (folders under <vault>/Categories/).",
@@ -449,6 +560,67 @@ export async function runTool(
       case "get_github_summary": {
         const s = await getGithub();
         return { ok: true, result: s };
+      }
+      case "calendar_create_event": {
+        const r = await createEvent({
+          summary: String(input.summary),
+          start: String(input.start),
+          end: String(input.end),
+          description: input.description ? String(input.description) : undefined,
+          location: input.location ? String(input.location) : undefined,
+          attendees: Array.isArray(input.attendees)
+            ? (input.attendees as string[])
+            : undefined,
+        });
+        return { ok: true, result: r };
+      }
+      case "calendar_reschedule_event": {
+        const r = await rescheduleEvent({
+          eventId: String(input.event_id),
+          start: String(input.start),
+          end: String(input.end),
+        });
+        return { ok: true, result: r };
+      }
+      case "calendar_cancel_event": {
+        const r = await cancelEvent(String(input.event_id));
+        return { ok: true, result: r };
+      }
+      case "task_create": {
+        const r = await appendTask({
+          text: String(input.text),
+          file: input.file ? String(input.file) : undefined,
+          due: input.due ? String(input.due) : undefined,
+          start: input.start ? String(input.start) : undefined,
+          scheduled: input.scheduled ? String(input.scheduled) : undefined,
+          priority: input.priority
+            ? (String(input.priority) as
+                | "highest"
+                | "high"
+                | "medium"
+                | "low"
+                | "lowest")
+            : undefined,
+        });
+        return { ok: true, result: r };
+      }
+      case "task_done": {
+        const r = await markTaskDone({
+          file: String(input.file),
+          text: String(input.text),
+        });
+        return r.ok ? { ok: true, result: r } : { ok: false, error: r.error };
+      }
+      case "kb_grep": {
+        const category = String(input.category ?? ctx.category ?? "Personal");
+        const matches = await grepWiki(category, String(input.query));
+        return { ok: true, result: { category, query: String(input.query), matches } };
+      }
+      case "kb_list_outputs": {
+        const category = String(input.category ?? ctx.category ?? "Personal");
+        const limit = Number(input.limit ?? 10);
+        const files = await listOutputs(category, limit);
+        return { ok: true, result: { category, files } };
       }
       case "kb_list_categories": {
         const cats = await listCategories();

@@ -10,6 +10,8 @@ type Automation = {
   cron: string;
   prompt: string;
   enabled: boolean;
+  kind: "agent" | "compile";
+  target_category: string | null;
   last_run_at: number | null;
   created_at: number;
 };
@@ -43,9 +45,14 @@ function fmtTime(ms: number | null): string {
   return format(new Date(ms), "MMM d HH:mm");
 }
 
+type KbResp = { categories: Array<{ name: string }> };
+
 export function AutomationsCard() {
   const { data, refresh } = usePoll<Resp>("/api/automations", 15_000);
+  const { data: kb } = usePoll<KbResp>("/api/kb", 30_000);
   const [showForm, setShowForm] = useState(false);
+  const [kind, setKind] = useState<"agent" | "compile">("agent");
+  const [targetCategory, setTargetCategory] = useState("Personal");
   const [name, setName] = useState("");
   const [cronExpr, setCronExpr] = useState("0 7 * * *");
   const [prompt, setPrompt] = useState("");
@@ -54,20 +61,31 @@ export function AutomationsCard() {
   const [error, setError] = useState<string | null>(null);
 
   async function create() {
-    if (!name.trim() || !cronExpr.trim() || !prompt.trim()) return;
+    if (!name.trim() || !cronExpr.trim()) return;
+    if (kind === "agent" && !prompt.trim()) return;
     setSubmitting(true);
     setError(null);
     try {
+      const body =
+        kind === "compile"
+          ? {
+              name,
+              cron: cronExpr,
+              kind: "compile" as const,
+              target_category: targetCategory,
+            }
+          : { name, cron: cronExpr, prompt, kind: "agent" as const };
       const res = await fetch("/api/automations", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, cron: cronExpr, prompt }),
+        body: JSON.stringify(body),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
       setName("");
       setPrompt("");
       setCronExpr("0 7 * * *");
+      setKind("agent");
       setShowForm(false);
       refresh();
     } catch (e) {
@@ -127,6 +145,29 @@ export function AutomationsCard() {
 
       {showForm && (
         <div className="mb-4 space-y-2 p-3 rounded-lg border border-zinc-800 bg-zinc-950/50">
+          <div className="flex gap-2">
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as "agent" | "compile")}
+              className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100"
+            >
+              <option value="agent">Agent run</option>
+              <option value="compile">Compile category</option>
+            </select>
+            {kind === "compile" && (
+              <select
+                value={targetCategory}
+                onChange={(e) => setTargetCategory(e.target.value)}
+                className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100"
+              >
+                {(kb?.categories ?? []).map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -139,16 +180,18 @@ export function AutomationsCard() {
             placeholder="Cron (e.g. 0 7 * * *)"
             className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100 font-mono"
           />
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Prompt to run (e.g. Give me a morning brief and append it to today's daily note under Quick Capture.)"
-            rows={3}
-            className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100 resize-none"
-          />
+          {kind === "agent" && (
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Prompt to run (e.g. Give me a morning brief and append it to today's daily note under Quick Capture.)"
+              rows={3}
+              className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-sm text-zinc-100 resize-none"
+            />
+          )}
           <div className="flex items-center justify-between">
             <span className="text-[10px] text-zinc-500 font-mono">
-              min hour dom mon dow · 0 7 * * * = 7am daily
+              min hour dom mon dow · 0 7 * * * = 7am daily · 0 2 * * 0 = Sun 2am
             </span>
             <button
               onClick={create}
@@ -204,7 +247,13 @@ export function AutomationsCard() {
                 </button>
               </div>
             </div>
-            <div className="text-xs text-zinc-500 truncate">{a.prompt}</div>
+            <div className="text-xs text-zinc-500 truncate">
+              {a.kind === "compile" ? (
+                <>compile → <span className="text-zinc-300">{a.target_category}</span></>
+              ) : (
+                a.prompt
+              )}
+            </div>
             {a.last_run_at && (
               <div className="text-[10px] text-zinc-600 mt-1">
                 last run: {fmtTime(a.last_run_at)}

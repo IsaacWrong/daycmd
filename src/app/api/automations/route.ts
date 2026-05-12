@@ -26,10 +26,12 @@ export async function POST(req: Request) {
     cron?: string;
     prompt?: string;
     enabled?: boolean;
+    kind?: "agent" | "compile";
+    target_category?: string | null;
   };
-  if (!body.name || !body.cron || !body.prompt) {
+  if (!body.name || !body.cron) {
     return NextResponse.json(
-      { error: "name, cron, prompt required" },
+      { error: "name and cron required" },
       { status: 400 },
     );
   }
@@ -39,11 +41,26 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  const kind = body.kind ?? "agent";
+  if (kind === "agent" && !body.prompt) {
+    return NextResponse.json(
+      { error: "prompt required for agent automations" },
+      { status: 400 },
+    );
+  }
+  if (kind === "compile" && !body.target_category) {
+    return NextResponse.json(
+      { error: "target_category required for compile automations" },
+      { status: 400 },
+    );
+  }
   const a = createAutomation({
     name: body.name,
     cron: body.cron,
     prompt: body.prompt,
     enabled: body.enabled,
+    kind,
+    target_category: body.target_category ?? null,
   });
   reloadScheduler();
   return NextResponse.json({ automation: a });

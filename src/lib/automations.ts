@@ -3,6 +3,9 @@ import path from "node:path";
 import os from "node:os";
 import { db } from "./db";
 import { runAgentOnce, type UsageTotals } from "./agent";
+import { streamCompile } from "./kb-compile";
+
+export type AutomationKind = "agent" | "compile";
 
 export type Automation = {
   id: number;
@@ -10,30 +13,34 @@ export type Automation = {
   cron: string;
   prompt: string;
   enabled: boolean;
+  kind: AutomationKind;
+  target_category: string | null;
   last_run_at: number | null;
   created_at: number;
 };
 
-type Row = Omit<Automation, "enabled"> & { enabled: number };
+type Row = Omit<Automation, "enabled" | "kind"> & {
+  enabled: number;
+  kind: string | null;
+};
 
 function rowToAutomation(r: Row): Automation {
-  return { ...r, enabled: !!r.enabled };
+  return { ...r, enabled: !!r.enabled, kind: (r.kind as AutomationKind) ?? "agent" };
 }
+
+const COLS =
+  "id, name, cron, prompt, enabled, last_run_at, created_at, kind, target_category";
 
 export function listAutomations(): Automation[] {
   const rows = db
-    .prepare(
-      "SELECT id, name, cron, prompt, enabled, last_run_at, created_at FROM automations ORDER BY id DESC",
-    )
+    .prepare(`SELECT ${COLS} FROM automations ORDER BY id DESC`)
     .all() as Row[];
   return rows.map(rowToAutomation);
 }
 
 export function getAutomation(id: number): Automation | null {
   const row = db
-    .prepare(
-      "SELECT id, name, cron, prompt, enabled, last_run_at, created_at FROM automations WHERE id = ?",
-    )
+    .prepare(`SELECT ${COLS} FROM automations WHERE id = ?`)
     .get(id) as Row | undefined;
   return row ? rowToAutomation(row) : null;
 }
@@ -41,18 +48,23 @@ export function getAutomation(id: number): Automation | null {
 export function createAutomation(input: {
   name: string;
   cron: string;
-  prompt: string;
+  prompt?: string;
   enabled?: boolean;
+  kind?: AutomationKind;
+  target_category?: string | null;
 }): Automation {
+  const kind = input.kind ?? "agent";
   const info = db
     .prepare(
-      "INSERT INTO automations (name, cron, prompt, enabled, created_at) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO automations (name, cron, prompt, enabled, kind, target_category, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
     .run(
       input.name,
       input.cron,
-      input.prompt,
+      input.prompt ?? "",
       input.enabled === false ? 0 : 1,
+      kind,
+      input.target_category ?? null,
       Date.now(),
     );
   return getAutomation(Number(info.lastInsertRowid))!;
@@ -60,7 +72,14 @@ export function createAutomation(input: {
 
 export function updateAutomation(
   id: number,
-  patch: Partial<Pick<Automation, "name" | "cron" | "prompt" | "enabled">>,
+  patch: Partial<{
+    name: string;
+    cron: string;
+    prompt: string;
+    enabled: boolean;
+    kind: AutomationKind;
+    target_category: string | null;
+  }>,
 ): Automation | null {
   const cur = getAutomation(id);
   if (!cur) return null;
@@ -69,10 +88,21 @@ export function updateAutomation(
     cron: patch.cron ?? cur.cron,
     prompt: patch.prompt ?? cur.prompt,
     enabled: patch.enabled ?? cur.enabled,
+    kind: patch.kind ?? cur.kind,
+    target_category:
+      patch.target_category !== undefined ? patch.target_category : cur.target_category,
   };
   db.prepare(
-    "UPDATE automations SET name = ?, cron = ?, prompt = ?, enabled = ? WHERE id = ?",
-  ).run(next.name, next.cron, next.prompt, next.enabled ? 1 : 0, id);
+    "UPDATE automations SET name = ?, cron = ?, prompt = ?, enabled = ?, kind = ?, target_category = ? WHERE id = ?",
+  ).run(
+    next.name,
+    next.cron,
+    next.prompt,
+    next.enabled ? 1 : 0,
+    next.kind,
+    next.target_category,
+    id,
+  );
   return getAutomation(id);
 }
 
@@ -125,7 +155,35 @@ export async function runAutomation(id: number): Promise<AutomationRun> {
   const runId = Number(runInfo.lastInsertRowid);
 
   try {
-    const result = await runAgentOnce(a.prompt, { source: `auto:${a.name}` });
+    let result: {
+      ok: boolean;
+      output: string;
+      error?: string;
+      usage: UsageTotals;
+    };
+    if (a.kind === "compile" && a.target_category) {
+      // Drain a compile stream into the same {ok, output, usage} shape.
+      let output = "";
+      let error: string | undefined;
+      let usage: UsageTotals = {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+      };
+      for await (const ev of streamCompile(a.target_category)) {
+        if (ev.type === "text") output += ev.data as string;
+        else if (ev.type === "error") error = String(ev.data);
+        else if (ev.type === "usage") usage = ev.data as UsageTotals;
+        else if (ev.type === "done") {
+          const d = ev.data as { summary?: string };
+          if (d?.summary) output = `${d.summary}\n\n${output}`.trim();
+        }
+      }
+      result = { ok: !error, output, error, usage };
+    } else {
+      result = await runAgentOnce(a.prompt, { source: `auto:${a.name}` });
+    }
     const endedAt = Date.now();
     db.prepare(
       `UPDATE automation_runs SET ended_at = ?, ok = ?, output = ?, error = ?,

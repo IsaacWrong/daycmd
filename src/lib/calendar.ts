@@ -12,10 +12,64 @@ export type CalEvent = {
   hangoutLink: string | null;
 };
 
-export async function getEvents(hoursAhead = 36): Promise<CalEvent[]> {
+async function calClient() {
   const auth = await getClient();
   if (!auth) throw new Error("not connected");
-  const cal = google.calendar({ version: "v3", auth });
+  return google.calendar({ version: "v3", auth });
+}
+
+export async function createEvent(input: {
+  summary: string;
+  start: string;
+  end: string;
+  description?: string;
+  location?: string;
+  attendees?: string[];
+}): Promise<{ ok: true; id: string; url: string }> {
+  const cal = await calClient();
+  const res = await cal.events.insert({
+    calendarId: "primary",
+    requestBody: {
+      summary: input.summary,
+      description: input.description,
+      location: input.location,
+      start: { dateTime: input.start },
+      end: { dateTime: input.end },
+      attendees: input.attendees?.map((email) => ({ email })),
+    },
+  });
+  return {
+    ok: true,
+    id: res.data.id ?? "",
+    url: res.data.htmlLink ?? "",
+  };
+}
+
+export async function rescheduleEvent(input: {
+  eventId: string;
+  start: string;
+  end: string;
+}): Promise<{ ok: true; id: string }> {
+  const cal = await calClient();
+  const res = await cal.events.patch({
+    calendarId: "primary",
+    eventId: input.eventId,
+    requestBody: {
+      start: { dateTime: input.start },
+      end: { dateTime: input.end },
+    },
+  });
+  return { ok: true, id: res.data.id ?? "" };
+}
+
+export async function cancelEvent(eventId: string): Promise<{ ok: true }> {
+  const cal = await calClient();
+  await cal.events.delete({ calendarId: "primary", eventId });
+  return { ok: true };
+}
+
+export async function getEvents(hoursAhead = 36): Promise<CalEvent[]> {
+  const cal = await calClient();
 
   const now = new Date();
   const end = new Date(now.getTime() + hoursAhead * 3600 * 1000);
