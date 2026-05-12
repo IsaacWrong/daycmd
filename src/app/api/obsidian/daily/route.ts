@@ -1,10 +1,22 @@
 import { NextResponse } from "next/server";
-import { appendToDailyNote, readDailyNote, writeDailyNoteIfUnchanged } from "@/lib/obsidian";
+import {
+  appendToDailyNote,
+  ensureDailyNote,
+  readDailyNote,
+  writeDailyNoteIfUnchanged,
+} from "@/lib/obsidian";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const noEnsure = url.searchParams.get("ensure") === "0";
   try {
+    if (!noEnsure) {
+      try {
+        await ensureDailyNote();
+      } catch {}
+    }
     const note = await readDailyNote();
     return NextResponse.json(note);
   } catch (err) {

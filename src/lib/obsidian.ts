@@ -3,10 +3,37 @@ import path from "node:path";
 import { format } from "date-fns";
 import { env } from "./config";
 import { parseTasks, sortTasks, type ObsidianTask } from "./tasks-parser";
+import { renderTemplate } from "./template-tokens";
 
 const VAULT = env.VAULT_PATH;
 const TASKS_DIR = path.join(VAULT, "Tasks");
 const DAILY_DIR = path.join(VAULT, "Daily");
+
+async function readDailyNoteConfig(): Promise<{
+  folder: string;
+  format: string;
+  template: string | null;
+}> {
+  const candidates = [
+    path.join(VAULT, ".obsidian", "daily-notes.json"),
+    path.join(VAULT, ".obsidian", "plugins", "periodic-notes", "data.json"),
+  ];
+  for (const p of candidates) {
+    try {
+      const raw = await fs.readFile(p, "utf8");
+      const parsed = JSON.parse(raw) as Record<string, unknown> & {
+        daily?: { folder?: string; format?: string; template?: string };
+      };
+      const daily = parsed.daily ?? parsed;
+      return {
+        folder: (daily.folder as string) || "Daily",
+        format: (daily.format as string) || "YYYY-MM-DD",
+        template: (daily.template as string) || null,
+      };
+    } catch {}
+  }
+  return { folder: "Daily", format: "YYYY-MM-DD", template: null };
+}
 
 async function listMarkdown(dir: string): Promise<string[]> {
   const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -57,6 +84,35 @@ export async function writeDailyNote(
   await fs.writeFile(p, content, "utf8");
   const stat = await fs.stat(p);
   return stat.mtimeMs;
+}
+
+export async function ensureDailyNote(date = new Date()): Promise<{
+  path: string;
+  created: boolean;
+  mtime: number;
+}> {
+  const p = dailyNotePath(date);
+  try {
+    const stat = await fs.stat(p);
+    return { path: p, created: false, mtime: stat.mtimeMs };
+  } catch {}
+
+  const cfg = await readDailyNoteConfig();
+  let body = "";
+  if (cfg.template) {
+    const templateRel = cfg.template.endsWith(".md") ? cfg.template : `${cfg.template}.md`;
+    const templatePath = path.join(VAULT, templateRel);
+    try {
+      const tpl = await fs.readFile(templatePath, "utf8");
+      body = renderTemplate(tpl, date, { title: format(date, "yyyy-MM-dd") });
+    } catch {
+      body = "";
+    }
+  }
+  await fs.mkdir(path.dirname(p), { recursive: true });
+  await fs.writeFile(p, body, "utf8");
+  const stat = await fs.stat(p);
+  return { path: p, created: true, mtime: stat.mtimeMs };
 }
 
 export async function appendToDailyNote(

@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDistanceToNowStrict } from "date-fns";
+import { format, formatDistanceToNowStrict, isToday, isTomorrow } from "date-fns";
 import { usePoll } from "@/lib/hooks";
 import type { CalEvent } from "@/lib/calendar";
 import type { GmailMsg } from "@/lib/gmail";
@@ -29,42 +29,105 @@ function ago(iso: string | number): string {
   );
 }
 
+type Bucket = "today" | "tomorrow" | "later";
+
+function bucketOf(d: Date): Bucket {
+  if (isToday(d)) return "today";
+  if (isTomorrow(d)) return "tomorrow";
+  return "later";
+}
+
+const BUCKET_ORDER: Bucket[] = ["today", "tomorrow", "later"];
+const BUCKET_LABEL: Record<Bucket, string> = {
+  today: "Today",
+  tomorrow: "Tomorrow",
+  later: "Later",
+};
+
+function CalendarRow({ e }: { e: CalEvent }) {
+  const start = new Date(e.start);
+  const time = e.allDay
+    ? "all day"
+    : start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return (
+    <a
+      key={`${e.calendar}-${e.id}`}
+      href={e.hangoutLink ?? e.url ?? "#"}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center gap-2.5 py-1 text-[12.5px] hover:opacity-80"
+    >
+      <span
+        className="t-mono text-[11px] text-fg-soft"
+        style={{ width: 52 }}
+      >
+        {time}
+      </span>
+      <span
+        className="src-dot src-calendar"
+        style={{ width: 6, height: 6, background: e.calendarColor || undefined }}
+      />
+      <span className="flex-1 truncate" style={{ letterSpacing: "-0.005em" }}>
+        {e.summary}
+      </span>
+    </a>
+  );
+}
+
 function CalendarSection() {
   const { data } = usePoll<CalResp>("/api/calendar", 60_000);
   const events = data && "events" in data ? data.events : [];
-  const upcoming = events
-    .filter((e) => !e.allDay && new Date(e.end).getTime() > Date.now())
-    .slice(0, 5);
+  const upcoming = events.filter((e) => new Date(e.end).getTime() > Date.now());
+
+  const grouped: Record<Bucket, CalEvent[]> = { today: [], tomorrow: [], later: [] };
+  for (const e of upcoming) grouped[bucketOf(new Date(e.start))].push(e);
+
+  // Cap total visible rows at 7, but always show at least 1 row from each
+  // non-empty bucket so context isn't lost.
+  let remaining = 7;
+  const visible: Record<Bucket, CalEvent[]> = { today: [], tomorrow: [], later: [] };
+  for (const b of BUCKET_ORDER) {
+    const take = Math.min(grouped[b].length, b === "today" ? remaining : Math.max(remaining - 1, 0));
+    visible[b] = grouped[b].slice(0, take);
+    remaining -= visible[b].length;
+    if (remaining <= 0) break;
+  }
+
+  const totalCount = grouped.today.length + grouped.tomorrow.length;
+
   return (
-    <SectionMini title="Calendar" count={upcoming.length} accent="calendar">
-      {upcoming.map((e) => {
-        const start = new Date(e.start);
-        const time = start.toLocaleTimeString([], {
-          hour: "numeric",
-          minute: "2-digit",
-        });
+    <SectionMini title="Calendar" count={totalCount} accent="calendar">
+      {BUCKET_ORDER.map((b) => {
+        const items = visible[b];
+        if (items.length === 0) return null;
+        const hidden = grouped[b].length - items.length;
+        const subLabel =
+          b === "later" && items[0]
+            ? `${BUCKET_LABEL[b]} · from ${format(new Date(items[0].start), "EEE MMM d")}`
+            : BUCKET_LABEL[b];
         return (
-          <a
-            key={`${e.calendar}-${e.id}`}
-            href={e.hangoutLink ?? e.url ?? "#"}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-2.5 py-1 text-[12.5px] hover:opacity-80"
-          >
-            <span
-              className="t-mono text-[11px] text-fg-soft"
-              style={{ width: 50 }}
+          <div key={b} className="mb-1.5" style={{ marginTop: b === "today" ? 0 : 10 }}>
+            <div
+              className="t-mono uppercase mb-1 flex items-center gap-2"
+              style={{
+                fontSize: 9,
+                color: b === "today" ? "var(--c-calendar)" : "var(--fg-soft)",
+                letterSpacing: "0.08em",
+              }}
             >
-              {time}
-            </span>
-            <span
-              className="src-dot src-calendar"
-              style={{ width: 6, height: 6, background: e.calendarColor || undefined }}
-            />
-            <span className="flex-1 truncate" style={{ letterSpacing: "-0.005em" }}>
-              {e.summary}
-            </span>
-          </a>
+              <span>{subLabel}</span>
+              {hidden > 0 && <span className="opacity-70">+{hidden}</span>}
+              {b !== "today" && (
+                <span
+                  className="flex-1 self-center"
+                  style={{ height: 1, background: "var(--rule)" }}
+                />
+              )}
+            </div>
+            {items.map((e) => (
+              <CalendarRow key={`${e.calendar}-${e.id}`} e={e} />
+            ))}
+          </div>
         );
       })}
       {upcoming.length === 0 && (
