@@ -32,6 +32,14 @@ export const SKILLS: SkillDef[] = [
       "Build me a realistic day plan. Check today's calendar for fixed blocks, then fit my open tasks (prioritize overdue + high priority) into the gaps. Be honest about how much I can actually do — better to nail 3 things than half-do 8. Output as a markdown timeline.",
   },
   {
+    id: "research",
+    label: "Research Topic",
+    description: "Web-search a topic, summarize, ingest to Research/",
+    category: "Research",
+    prompt:
+      "I'll give you a topic in my next message. Use web_search to find current authoritative sources (last 12 months preferred), web_fetch the 3-5 strongest ones, and produce a tight summary: key claims, where they conflict, open questions. Cite every claim with the URL. Then kb_ingest the summary to the Research category with source_type='research_summary' so it lands in raw/ for compile. Wait for the topic.",
+  },
+  {
     id: "weekly",
     label: "Weekly Review",
     description: "Summarize past 7 days from daily notes",

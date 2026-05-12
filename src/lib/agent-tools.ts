@@ -29,7 +29,9 @@ import {
 import { getEvents } from "./calendar";
 import { getSummary as getGithub } from "./github";
 
-export const tools: Anthropic.Tool[] = [
+export const tools: Anthropic.Messages.ToolUnion[] = [
+  { type: "web_search_20260209", name: "web_search" },
+  { type: "web_fetch_20260209", name: "web_fetch" },
   {
     name: "get_tasks",
     description:

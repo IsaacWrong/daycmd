@@ -40,6 +40,11 @@ Context:
 - Obsidian vault uses Tasks plugin format (📅 due, 🛫 start, ⏫ priority, etc.).
 - Today's daily note lives at Daily/YYYY-MM-DD.md.
 
+Web research:
+- web_search and web_fetch are server-hosted tools. Use them for anything past your training cutoff or anything specific to current news, regulations, prices, docs, etc. Don't refuse a research request — search.
+- Pattern: web_search for discovery, web_fetch on the most promising URL(s) for deep read. Cite URLs in output.
+- For substantive research, kb_ingest the findings to the active category so they accumulate.
+
 Knowledge base (Karpathy 3-tier per category):
 - Every session has a current category (Personal, Research, Sales, project names, etc.). Every run of you is auto-logged to that category's raw/ folder — no action required from you.
 - kb_query(category) reads the category's wiki INDEX + page list. Use this at the START of substantive work to ground yourself in prior compiled knowledge for the category. Skip for Personal-category quick tasks.
@@ -123,11 +128,22 @@ export async function* streamAgent(
 
     for await (const event of stream) {
       if (event.type === "content_block_start") {
-        if (event.content_block.type === "tool_use") {
-          toolsUsed.push({ name: event.content_block.name });
+        const block = event.content_block as { type: string; name?: string; id?: string };
+        if (block.type === "tool_use" && block.name) {
+          toolsUsed.push({ name: block.name });
           yield {
             type: "tool_start",
-            data: { name: event.content_block.name, id: event.content_block.id },
+            data: { name: block.name, id: block.id },
+          };
+        } else if (block.type === "server_tool_use" && block.name) {
+          toolsUsed.push({ name: block.name, ok: true });
+          yield {
+            type: "tool_start",
+            data: { name: block.name, id: block.id },
+          };
+          yield {
+            type: "tool_result",
+            data: { name: block.name, ok: true },
           };
         }
       } else if (event.type === "content_block_delta") {
@@ -152,6 +168,13 @@ export async function* streamAgent(
       yield { type: "usage", data: totals };
       yield { type: "done", data: { category } };
       return;
+    }
+
+    if (final.stop_reason === "pause_turn") {
+      // Server-side tool (web_search/web_fetch) hit its internal iteration cap.
+      // Assistant content already appended above; re-issue with same messages
+      // to let the server resume.
+      continue;
     }
 
     if (final.stop_reason !== "tool_use") {
