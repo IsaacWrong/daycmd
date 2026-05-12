@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readDailyNote, writeDailyNote } from "@/lib/obsidian";
+import { readDailyNote, writeDailyNoteIfUnchanged } from "@/lib/obsidian";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +17,22 @@ export async function GET() {
 
 export async function PATCH(req: Request) {
   try {
-    const { content } = (await req.json()) as { content: string };
+    const { content, mtime } = (await req.json()) as {
+      content: string;
+      mtime?: number;
+    };
     if (typeof content !== "string") {
       return NextResponse.json({ error: "content required" }, { status: 400 });
     }
-    await writeDailyNote(content);
-    return NextResponse.json({ ok: true });
+    const expected = typeof mtime === "number" ? mtime : 0;
+    const res = await writeDailyNoteIfUnchanged(content, expected);
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: "conflict", current: res.current },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ ok: true, mtime: res.mtime });
   } catch (err) {
     return NextResponse.json(
       { error: (err as Error).message },

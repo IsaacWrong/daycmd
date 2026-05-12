@@ -34,21 +34,54 @@ export async function readDailyNote(date = new Date()): Promise<{
   path: string;
   content: string;
   exists: boolean;
+  mtime: number;
 }> {
   const p = dailyNotePath(date);
   try {
-    const content = await fs.readFile(p, "utf8");
-    return { path: p, content, exists: true };
+    const [content, stat] = await Promise.all([
+      fs.readFile(p, "utf8"),
+      fs.stat(p),
+    ]);
+    return { path: p, content, exists: true, mtime: stat.mtimeMs };
   } catch {
-    return { path: p, content: "", exists: false };
+    return { path: p, content: "", exists: false, mtime: 0 };
   }
 }
 
 export async function writeDailyNote(
   content: string,
   date = new Date(),
-): Promise<void> {
+): Promise<number> {
   const p = dailyNotePath(date);
   await fs.mkdir(path.dirname(p), { recursive: true });
   await fs.writeFile(p, content, "utf8");
+  const stat = await fs.stat(p);
+  return stat.mtimeMs;
+}
+
+export async function writeDailyNoteIfUnchanged(
+  content: string,
+  expectedMtime: number,
+  date = new Date(),
+): Promise<{ ok: true; mtime: number } | { ok: false; current: { content: string; mtime: number } }> {
+  const p = dailyNotePath(date);
+  let currentMtime = 0;
+  try {
+    const stat = await fs.stat(p);
+    currentMtime = stat.mtimeMs;
+  } catch {
+    currentMtime = 0;
+  }
+  // Allow small tolerance for filesystem mtime precision.
+  if (expectedMtime > 0 && Math.abs(currentMtime - expectedMtime) > 1) {
+    const current = await readDailyNote(date);
+    return { ok: false, current: { content: current.content, mtime: current.mtime } };
+  }
+  if (expectedMtime === 0 && currentMtime > 0) {
+    // Caller thinks file doesn't exist but it does — conflict.
+    const current = await readDailyNote(date);
+    return { ok: false, current: { content: current.content, mtime: current.mtime } };
+  }
+  const mtime = await writeDailyNote(content, date);
+  return { ok: true, mtime };
 }
