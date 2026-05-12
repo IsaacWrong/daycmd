@@ -65,21 +65,28 @@ export function CalendarCard() {
                 <ul className="space-y-0.5">
                   {items.slice(0, 6).map((e) => (
                     <li
-                      key={e.id}
+                      key={`${e.calendar}-${e.id}`}
                       className="flex items-baseline gap-2 text-sm"
                     >
                       <span className="text-xs text-zinc-500 w-20 shrink-0">
                         {timeLabel(e)}
                       </span>
+                      {e.calendarColor && (
+                        <span
+                          className="w-1.5 h-1.5 rounded-full shrink-0"
+                          style={{ backgroundColor: e.calendarColor }}
+                          title={e.calendar}
+                        />
+                      )}
                       <a
                         href={e.hangoutLink ?? e.url ?? "#"}
                         target="_blank"
                         rel="noreferrer"
                         className="flex-1 truncate text-zinc-200 hover:text-zinc-50"
+                        title={`${e.summary} · ${e.calendar}`}
                       >
                         {e.summary}
-                      </a>
-                    </li>
+                      </a></li>
                   ))}
                 </ul>
               </div>

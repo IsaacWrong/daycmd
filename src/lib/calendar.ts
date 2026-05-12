@@ -10,6 +10,8 @@ export type CalEvent = {
   location: string | null;
   url: string | null;
   hangoutLink: string | null;
+  calendar: string;
+  calendarColor: string | null;
 };
 
 async function calClient() {
@@ -74,27 +76,56 @@ export async function getEvents(hoursAhead = 36): Promise<CalEvent[]> {
   const now = new Date();
   const end = new Date(now.getTime() + hoursAhead * 3600 * 1000);
 
-  const res = await cal.events.list({
-    calendarId: "primary",
-    timeMin: now.toISOString(),
-    timeMax: end.toISOString(),
-    singleEvents: true,
-    orderBy: "startTime",
-    maxResults: 25,
+  // List every calendar user has access to (own + shared + subscribed).
+  // calendar.readonly scope is sufficient.
+  const listRes = await cal.calendarList.list({
+    minAccessRole: "reader",
+    showHidden: false,
   });
+  const calendars = (listRes.data.items ?? []).filter(
+    (c) => c.selected !== false,
+  );
 
-  return (res.data.items ?? []).map((e): CalEvent => {
-    const start = e.start?.dateTime ?? e.start?.date ?? "";
-    const endT = e.end?.dateTime ?? e.end?.date ?? "";
-    return {
-      id: e.id ?? "",
-      summary: e.summary ?? "(no title)",
-      start,
-      end: endT,
-      allDay: !e.start?.dateTime,
-      location: e.location ?? null,
-      url: e.htmlLink ?? null,
-      hangoutLink: e.hangoutLink ?? null,
-    };
-  });
+  const perCal = await Promise.all(
+    calendars.map(async (c) => {
+      const id = c.id;
+      if (!id) return [];
+      try {
+        const r = await cal.events.list({
+          calendarId: id,
+          timeMin: now.toISOString(),
+          timeMax: end.toISOString(),
+          singleEvents: true,
+          orderBy: "startTime",
+          maxResults: 50,
+        });
+        return (r.data.items ?? []).map((e): CalEvent => {
+          const start = e.start?.dateTime ?? e.start?.date ?? "";
+          const endT = e.end?.dateTime ?? e.end?.date ?? "";
+          return {
+            id: e.id ?? "",
+            summary: e.summary ?? "(no title)",
+            start,
+            end: endT,
+            allDay: !e.start?.dateTime,
+            location: e.location ?? null,
+            url: e.htmlLink ?? null,
+            hangoutLink: e.hangoutLink ?? null,
+            calendar: c.summary ?? c.summaryOverride ?? id,
+            calendarColor: c.backgroundColor ?? null,
+          };
+        });
+      } catch (err) {
+        console.error(
+          `[calendar] failed to fetch ${c.summary ?? id}:`,
+          (err as Error).message,
+        );
+        return [];
+      }
+    }),
+  );
+
+  const all = perCal.flat();
+  all.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+  return all.slice(0, 50);
 }
