@@ -6,9 +6,15 @@ import { writeRawAgentRun } from "./kb";
 import { getSettings } from "./settings";
 import { logError } from "./errors";
 
+export type Attachment =
+  | { kind: "image"; mediaType: string; data: string; name: string }
+  | { kind: "document"; mediaType: string; data: string; name: string }
+  | { kind: "text"; data: string; name: string };
+
 export type ClientMessage = {
   role: "user" | "assistant";
   content: string;
+  attachments?: Attachment[];
 };
 
 const SYSTEM_PROMPT = `You are the agent inside AI OS — Isaac's personal dashboard. You help him manage his day across Obsidian (his memory + tasks vault), Gmail, Google Calendar, and GitHub.
@@ -127,10 +133,39 @@ export async function* streamAgent(
   let containerId: string | null = opts.containerId ?? null;
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
-  const apiMessages: Anthropic.MessageParam[] = messages.map((m) => ({
-    role: m.role,
-    content: m.content,
-  }));
+  const apiMessages: Anthropic.MessageParam[] = messages.map((m) => {
+    const atts = m.attachments ?? [];
+    if (atts.length === 0) return { role: m.role, content: m.content };
+    const blocks: Anthropic.ContentBlockParam[] = [];
+    for (const a of atts) {
+      if (a.kind === "image") {
+        blocks.push({
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: a.mediaType as "image/png" | "image/jpeg" | "image/gif" | "image/webp",
+            data: a.data,
+          },
+        });
+      } else if (a.kind === "document") {
+        blocks.push({
+          type: "document",
+          source: {
+            type: "base64",
+            media_type: "application/pdf",
+            data: a.data,
+          },
+        });
+      } else {
+        blocks.push({
+          type: "text",
+          text: `[Attached file: ${a.name}]\n\n\`\`\`\n${a.data}\n\`\`\``,
+        });
+      }
+    }
+    if (m.content) blocks.push({ type: "text", text: m.content });
+    return { role: m.role, content: blocks };
+  });
 
   const totals: UsageTotals = {
     input_tokens: 0,

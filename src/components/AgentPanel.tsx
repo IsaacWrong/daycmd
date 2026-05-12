@@ -12,11 +12,89 @@ const CONTAINER_LS_KEY = (cat: string) => `ai-os.agent.container.${cat}`;
 const BUSY_EVENT = "ai-os:agent-busy";
 const RUN_SKILL_EVENT = "ai-os:run-skill";
 
+type Attachment =
+  | { kind: "image"; mediaType: string; data: string; name: string }
+  | { kind: "document"; mediaType: string; data: string; name: string }
+  | { kind: "text"; data: string; name: string };
+
 type Msg = {
   role: "user" | "assistant";
   content: string;
   tools?: Array<{ name: string; ok?: boolean }>;
+  attachments?: Attachment[];
 };
+
+const MAX_ATTACH_BYTES = 20 * 1024 * 1024;
+
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
+function readAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const idx = result.indexOf(",");
+      resolve(idx >= 0 ? result.slice(idx + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function readAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
+}
+
+function AttachmentChip({ att, onRemove }: { att: Attachment; onRemove?: () => void }) {
+  if (att.kind === "image") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900/70 p-1 pr-2 text-xs text-zinc-200">
+        <img
+          src={`data:${att.mediaType};base64,${att.data}`}
+          alt={att.name}
+          className="h-10 w-10 object-cover rounded"
+        />
+        <span className="max-w-[140px] truncate" title={att.name}>{att.name}</span>
+        {onRemove && (
+          <button type="button" onClick={onRemove} className="text-zinc-500 hover:text-zinc-200 ml-0.5" aria-label="Remove">
+            ✕
+          </button>
+        )}
+      </span>
+    );
+  }
+  const icon = att.kind === "document" ? "📄" : "📝";
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900/70 px-2 py-1 text-xs text-zinc-200">
+      <span>{icon}</span>
+      <span className="max-w-[180px] truncate" title={att.name}>{att.name}</span>
+      {onRemove && (
+        <button type="button" onClick={onRemove} className="text-zinc-500 hover:text-zinc-200 ml-0.5" aria-label="Remove">
+          ✕
+        </button>
+      )}
+    </span>
+  );
+}
+
+async function fileToAttachment(file: File): Promise<Attachment | null> {
+  if (file.size > MAX_ATTACH_BYTES) {
+    throw new Error(`${file.name} exceeds 20MB limit`);
+  }
+  const type = file.type || "";
+  if (IMAGE_TYPES.has(type)) {
+    return { kind: "image", mediaType: type, data: await readAsBase64(file), name: file.name };
+  }
+  if (type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+    return { kind: "document", mediaType: "application/pdf", data: await readAsBase64(file), name: file.name };
+  }
+  return { kind: "text", data: await readAsText(file), name: file.name };
+}
 
 function loadMessages(cat: string): Msg[] {
   if (typeof window === "undefined") return [];
@@ -30,8 +108,27 @@ function loadMessages(cat: string): Msg[] {
 
 function saveMessages(cat: string, msgs: Msg[]): void {
   if (typeof window === "undefined") return;
-  if (msgs.length === 0) localStorage.removeItem(MESSAGES_LS_KEY(cat));
-  else localStorage.setItem(MESSAGES_LS_KEY(cat), JSON.stringify(msgs));
+  if (msgs.length === 0) {
+    localStorage.removeItem(MESSAGES_LS_KEY(cat));
+    return;
+  }
+  try {
+    localStorage.setItem(MESSAGES_LS_KEY(cat), JSON.stringify(msgs));
+  } catch {
+    const stripped = msgs.map((m) =>
+      m.attachments
+        ? {
+            ...m,
+            attachments: m.attachments.map((a) => ({ ...a, data: "" })),
+          }
+        : m,
+    );
+    try {
+      localStorage.setItem(MESSAGES_LS_KEY(cat), JSON.stringify(stripped));
+    } catch {
+      /* give up */
+    }
+  }
 }
 
 function loadContainer(cat: string): string | null {
@@ -57,6 +154,29 @@ export function AgentPanel() {
   const abortRef = useRef<AbortController | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
+
+  async function addFiles(files: FileList | File[]) {
+    const arr = Array.from(files);
+    if (arr.length === 0) return;
+    const results: Attachment[] = [];
+    for (const f of arr) {
+      try {
+        const att = await fileToAttachment(f);
+        if (att) results.push(att);
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    }
+    if (results.length) setPendingAttachments((prev) => [...prev, ...results]);
+  }
+
+  function removeAttachment(idx: number) {
+    setPendingAttachments((prev) => prev.filter((_, i) => i !== idx));
+  }
 
   useEffect(() => {
     setMounted(true);
@@ -162,16 +282,21 @@ export function AgentPanel() {
   }, []);
 
   async function send(content: string, skill?: SkillDef) {
-    if (!content.trim() || busy) return;
+    const atts = pendingAttachments;
+    if (!content.trim() && atts.length === 0) return;
+    if (busy) return;
     setError(null);
     const useCategory = skill?.category ?? category;
     const existing =
       useCategory === category ? messages : loadMessages(useCategory);
+    const userMsg: Msg = { role: "user", content };
+    if (atts.length) userMsg.attachments = atts;
     const next: Msg[] = [
       ...existing,
-      { role: "user", content },
+      userMsg,
       { role: "assistant", content: "", tools: [] },
     ];
+    setPendingAttachments([]);
     // Persist BEFORE switching category so the [category] effect's
     // loadMessages() picks up the placeholder, not stale data.
     saveMessages(useCategory, next);
@@ -182,7 +307,11 @@ export function AgentPanel() {
 
     const apiMessages = next
       .slice(0, -1)
-      .map((m) => ({ role: m.role, content: m.content }));
+      .map((m) => ({
+        role: m.role,
+        content: m.content,
+        ...(m.attachments ? { attachments: m.attachments } : {}),
+      }));
     const containerId = loadContainer(useCategory);
 
     const controller = new AbortController();
@@ -348,9 +477,31 @@ export function AgentPanel() {
 
       <div
         ref={scrollRef}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          dragDepth.current += 1;
+          if (e.dataTransfer?.types?.includes("Files")) setIsDragging(true);
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          dragDepth.current = Math.max(0, dragDepth.current - 1);
+          if (dragDepth.current === 0) setIsDragging(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          dragDepth.current = 0;
+          setIsDragging(false);
+          const files = e.dataTransfer?.files;
+          if (files && files.length) void addFiles(files);
+        }}
         className={
-          "flex-1 overflow-y-auto overscroll-contain space-y-4 pr-2 " +
-          (expanded ? "min-h-0" : "min-h-[280px] max-h-[520px]")
+          "relative flex-1 overflow-y-auto overscroll-contain space-y-4 pr-2 " +
+          (expanded ? "min-h-0" : "min-h-[280px] max-h-[520px]") +
+          (isDragging ? " ring-2 ring-blue-500/60 rounded-md" : "")
         }
       >
         {messages.length === 0 && (
@@ -391,14 +542,34 @@ export function AgentPanel() {
               ) : null
             ) : (
               <div className="whitespace-pre-wrap text-zinc-100 leading-relaxed">
+                {m.attachments && m.attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-1.5">
+                    {m.attachments.map((a, ai) => (
+                      <AttachmentChip key={ai} att={a} />
+                    ))}
+                  </div>
+                )}
                 {m.content}
               </div>
             )}
           </div>
         ))}
+        {isDragging && (
+          <div className="pointer-events-none sticky bottom-2 mx-auto w-fit px-3 py-1.5 rounded-md bg-blue-600/30 border border-blue-500/60 text-xs text-blue-100">
+            Drop to attach
+          </div>
+        )}
       </div>
 
       {error && <p className="text-sm text-red-400 mt-2">{error}</p>}
+
+      {pendingAttachments.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {pendingAttachments.map((a, i) => (
+            <AttachmentChip key={i} att={a} onRemove={() => removeAttachment(i)} />
+          ))}
+        </div>
+      )}
 
       <form
         onSubmit={(e) => {
@@ -408,9 +579,43 @@ export function AgentPanel() {
         className="mt-3 flex gap-2"
       >
         <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files) void addFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={busy}
+          title="Attach file (or drop/paste)"
+          className="px-2.5 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+        >
+          📎
+        </button>
+        <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onPaste={(e) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            const files: File[] = [];
+            for (const it of Array.from(items)) {
+              if (it.kind === "file") {
+                const f = it.getAsFile();
+                if (f) files.push(f);
+              }
+            }
+            if (files.length) {
+              e.preventDefault();
+              void addFiles(files);
+            }
+          }}
           placeholder={busy ? "Working…" : "Ask anything…"}
           disabled={busy}
           className="flex-1 bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-zinc-600 disabled:opacity-50"
@@ -427,7 +632,7 @@ export function AgentPanel() {
         ) : (
           <button
             type="submit"
-            disabled={!input.trim()}
+            disabled={!input.trim() && pendingAttachments.length === 0}
             className="px-4 py-2 rounded-md bg-zinc-100 text-zinc-900 text-sm font-medium hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Send
