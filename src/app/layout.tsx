@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI OS",
-  description: "Personal dashboard",
+  title: "Daycmd",
+  description: "Local-first agent dashboard for your day.",
 };
 
 export default function RootLayout({

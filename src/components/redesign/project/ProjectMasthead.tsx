@@ -49,7 +49,7 @@ export function ProjectMasthead({ name }: { name: string }) {
           style={{ fontSize: 12, color: "var(--fg-soft)", whiteSpace: "nowrap" }}
         >
           <Link href="/" className="hover:text-fg">
-            ← AI OS
+            ← Daycmd
           </Link>
           <span style={{ opacity: 0.5 }}>/</span>
           <span>projects</span>

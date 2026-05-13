@@ -47,7 +47,7 @@ export function TodFrame({
   children: React.ReactNode;
 }) {
   return (
-    <div className={`aios-frame tod-${tod}${focus ? " focus" : ""}`}>
+    <div className={`daycmd-frame tod-${tod}${focus ? " focus" : ""}`}>
       <div className="orb orb-a" />
       <div className="orb orb-b" />
       <div className="grain" />
