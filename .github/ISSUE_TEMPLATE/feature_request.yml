@@ -1,0 +1,34 @@
+name: Feature request
+description: Suggest an idea for Daycmd.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you running into?
+      description: Be concrete. "I want X" gets the proposal; "Y is painful because Z" gets the right design.
+      placeholder: Every time the calendar event ends, I have to manually refresh to see the next block.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      placeholder: Auto-rotate the Now hero once the current event's end time passes.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you ruled out, and why.
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - Small (single component / endpoint)
+        - Medium (cross-cutting)
+        - Large (new surface area / external service)
+    validations:
+      required: true

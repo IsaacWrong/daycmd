@@ -1,0 +1,55 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. A clear repro is worth a thousand "doesn't work" comments.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect to happen, and what happened instead?
+      placeholder: I clicked Continue writing and the modal stayed blank for 30s before crashing the tab.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Boot dev with `npm run dev`
+        2. Open localhost:3000
+        3. Click Continue writing
+        4. Observe ...
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node version
+      placeholder: v22.10.0
+    validations:
+      required: true
+  - type: dropdown
+    id: vault
+    attributes:
+      label: Vault
+      options:
+        - sample-vault (bundled)
+        - my own Obsidian vault
+        - other
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      placeholder: Chrome 138 / Safari 18 / Firefox 130
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / stack trace
+      description: Paste any relevant terminal output or browser console errors.
+      render: shell

@@ -90,6 +90,15 @@ Lint findings flow into the Errors section + mirror to `Errors/{date}.md` in the
 - You want multi-user / multi-device sync out of the box — this is solo, vault-via-Obsidian-Sync.
 - You want a polished SaaS — this is open-source you'll occasionally have to debug.
 
+## ⚠ Before you run it
+
+Daycmd's agent has tools that **write to your Obsidian vault, send / archive Gmail, and create Google Calendar events**. Before pointing it at a real vault or live accounts:
+
+- **Back up your vault.** Use Obsidian Sync, git, or Time Machine. The agent edits files (creates tasks, appends to the daily note, writes KB pages, marks tasks done). Mistakes happen.
+- **Set a budget cap in `/settings` before the first long-running skill.** Daily cap defaults to `$0` (unlimited). Forgetting to set one and running a few `Triage Inbox` skills in a row could cost real money.
+- **Try the bundled sample vault first.** Point `VAULT_PATH` at [`examples/sample-vault/`](examples/sample-vault/) to kick the tires — no risk to your real notes.
+- **Connect Google / GitHub *last*.** They unlock send-email and write-calendar tools; until you connect them, every feed degrades gracefully.
+
 ## Quickstart
 
 ```bash
