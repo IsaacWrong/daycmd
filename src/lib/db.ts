@@ -3,9 +3,27 @@ import path from "node:path";
 import fs from "node:fs";
 
 const DATA_DIR = path.join(process.cwd(), "data");
-const DB_PATH = path.join(DATA_DIR, "ai-os.db");
+const DB_PATH = path.join(DATA_DIR, "daycmd.db");
+const LEGACY_DB_PATH = path.join(DATA_DIR, "ai-os.db");
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+// One-shot migration from the AI OS legacy filename. If only the legacy file
+// exists, rename it (and its sqlite WAL/SHM sidecars) to the new name.
+if (!fs.existsSync(DB_PATH) && fs.existsSync(LEGACY_DB_PATH)) {
+  try {
+    fs.renameSync(LEGACY_DB_PATH, DB_PATH);
+    for (const ext of ["-wal", "-shm"]) {
+      const from = LEGACY_DB_PATH + ext;
+      const to = DB_PATH + ext;
+      if (fs.existsSync(from)) {
+        try { fs.renameSync(from, to); } catch {}
+      }
+    }
+  } catch {
+    // fall through — better-sqlite3 will just create a fresh DB at DB_PATH
+  }
+}
 
 declare global {
   // eslint-disable-next-line no-var

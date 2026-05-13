@@ -126,7 +126,7 @@ Next.js 16 · React 19 · TypeScript · Tailwind v4 (`@theme inline` design toke
 ## Architecture notes
 
 - **Vault-as-truth.** All notes, tasks, daily entries, KB pages, and lint output live as markdown in the vault. Open them in Obsidian, edit them in Vim, sync via Obsidian Sync or git. Daycmd reads + writes through plain `fs`.
-- **SQLite is a fast cache.** `data/ai-os.db` holds OAuth tokens, usage rows, automations, error log, agent threads. Gitignored. Errors are also mirrored to `Errors/{date}.md` in the vault for cross-device durability.
+- **SQLite is a fast cache.** `data/daycmd.db` holds OAuth tokens, usage rows, automations, error log, agent threads. Gitignored. Errors are also mirrored to `Errors/{date}.md` in the vault for cross-device durability. A legacy `data/ai-os.db` is auto-migrated on first run.
 - **Time-of-day palette via CSS vars.** `.tod-*` classes on `.daycmd-frame` swap `--bg-a`, `--fg`, `--rule`, `--glass`, orb colors, etc. No `dark:` Tailwind variants anywhere.
 - **OKLCH-relative colors throughout** (`oklch(from var(--fg) l c h / 0.1)`). Tailwind v4 + modern browsers.
 - **Scheduler boots from `instrumentation.ts`.** Default KB compile + lint rows are seeded per category on first run (idempotent). Stale-sweep endpoint at `POST /api/kb/auto-compile`.

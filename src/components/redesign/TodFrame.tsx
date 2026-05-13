@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { migrateKey } from "@/lib/ls-migrate";
 
 export type Tod = "dawn" | "morning" | "noon" | "afternoon" | "dusk" | "night" | "deep";
 
@@ -23,11 +24,12 @@ export function useTod(): Tod {
   return tod;
 }
 
-const FOCUS_LS_KEY = "ai-os.focus-mode";
+const FOCUS_LS_KEY = "daycmd.focus-mode";
 
 export function useFocusMode(): [boolean, () => void, (v: boolean) => void] {
   const [focus, setFocus] = useState(false);
   useEffect(() => {
+    migrateKey("ai-os.focus-mode", FOCUS_LS_KEY);
     const v = localStorage.getItem(FOCUS_LS_KEY);
     if (v === "1") setFocus(true);
   }, []);
