@@ -13,6 +13,14 @@ type Settings = {
 
 type GoogleStatus = { configured: boolean; connected: boolean };
 
+type EnvStatus = {
+  vaultPath: { present: boolean; valid: boolean; reason?: string };
+  anthropicKey: { present: boolean };
+  githubToken: { present: boolean };
+  googleClient: { present: boolean };
+  ready: boolean;
+};
+
 const FIELD_STYLE: React.CSSProperties = {
   background: "transparent",
   border: "1px solid var(--rule)",
@@ -52,6 +60,16 @@ export default function SettingsPage() {
   const [categories, setCategories] = useState<string[]>(["Personal"]);
   const [google, setGoogle] = useState<GoogleStatus | null>(null);
   const [saved, setSaved] = useState(false);
+  const [envStatus, setEnvStatus] = useState<EnvStatus | null>(null);
+  const [envForm, setEnvForm] = useState({
+    VAULT_PATH: "",
+    ANTHROPIC_API_KEY: "",
+    GITHUB_TOKEN: "",
+    GOOGLE_CLIENT_ID: "",
+    GOOGLE_CLIENT_SECRET: "",
+  });
+  const [envSaving, setEnvSaving] = useState(false);
+  const [envMsg, setEnvMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     fetch("/api/settings")
@@ -65,7 +83,48 @@ export default function SettingsPage() {
     fetch("/api/auth/google/status")
       .then((r) => r.json())
       .then(setGoogle);
+    fetch("/api/setup")
+      .then((r) => r.json())
+      .then(setEnvStatus);
   }, []);
+
+  async function saveEnv() {
+    setEnvSaving(true);
+    setEnvMsg(null);
+    try {
+      const body: Record<string, string> = {};
+      for (const [k, v] of Object.entries(envForm)) {
+        if (v.trim()) body[k] = v.trim();
+      }
+      if (Object.keys(body).length === 0) {
+        setEnvMsg({ ok: false, text: "Nothing to save." });
+        return;
+      }
+      const res = await fetch("/api/setup", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = (await res.json()) as { ok?: boolean; error?: string; status?: EnvStatus };
+      if (!res.ok || !j.ok) {
+        setEnvMsg({ ok: false, text: j.error ?? `HTTP ${res.status}` });
+        return;
+      }
+      if (j.status) setEnvStatus(j.status);
+      setEnvForm({
+        VAULT_PATH: "",
+        ANTHROPIC_API_KEY: "",
+        GITHUB_TOKEN: "",
+        GOOGLE_CLIENT_ID: "",
+        GOOGLE_CLIENT_SECRET: "",
+      });
+      setEnvMsg({ ok: true, text: "saved · restart `npm run dev` to pick up" });
+    } catch (e) {
+      setEnvMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setEnvSaving(false);
+    }
+  }
 
   async function save(patch: Partial<Settings>) {
     const res = await fetch("/api/settings", {
@@ -159,6 +218,99 @@ export default function SettingsPage() {
           <p className="text-[13px] text-fg-soft">Loading…</p>
         ) : (
           <>
+            <Section eyebrow="Env" title="Keys & tokens" accent="agent">
+              <p
+                className="text-[12.5px] text-fg-soft mb-3"
+                style={{ letterSpacing: "-0.005em" }}
+              >
+                Edit values in <code className="t-mono">.env.local</code>. Restart{" "}
+                <code className="t-mono">npm run dev</code> after saving — Next caches{" "}
+                <code className="t-mono">process.env</code> at boot. Existing values stay set unless overridden.
+              </p>
+              {envStatus && (
+                <div className="flex flex-wrap items-center gap-2 mb-4">
+                  {[
+                    ["vault", envStatus.vaultPath.valid],
+                    ["anthropic", envStatus.anthropicKey.present],
+                    ["github", envStatus.githubToken.present],
+                    ["google", envStatus.googleClient.present],
+                  ].map(([label, ok]) => (
+                    <span
+                      key={label as string}
+                      className="t-mono inline-flex items-center gap-1.5"
+                      style={{
+                        fontSize: 11,
+                        padding: "2px 8px",
+                        borderRadius: 4,
+                        border: `1px solid ${ok ? "var(--c-good)" : "var(--rule)"}`,
+                        color: ok ? "var(--c-good)" : "var(--fg-soft)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: 99,
+                          background: ok ? "var(--c-good)" : "var(--fg-soft)",
+                        }}
+                      />
+                      {label as string}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {([
+                ["VAULT_PATH", "Vault path", "text", "/Users/you/Documents/Your Vault"],
+                ["ANTHROPIC_API_KEY", "Anthropic API key", "password", "sk-ant-api03-…"],
+                ["GITHUB_TOKEN", "GitHub token", "password", "ghp_…"],
+                ["GOOGLE_CLIENT_ID", "Google client ID", "text", "…apps.googleusercontent.com"],
+                ["GOOGLE_CLIENT_SECRET", "Google client secret", "password", "GOCSPX-…"],
+              ] as const).map(([k, label, type, ph]) => (
+                <Field key={k} label={label}>
+                  <input
+                    type={type}
+                    value={envForm[k]}
+                    onChange={(e) =>
+                      setEnvForm((s) => ({ ...s, [k]: e.target.value }))
+                    }
+                    placeholder={ph}
+                    style={{ ...FIELD_STYLE, width: 380 }}
+                  />
+                </Field>
+              ))}
+              <div className="flex items-center gap-3 mt-3">
+                <button
+                  type="button"
+                  onClick={saveEnv}
+                  disabled={envSaving}
+                  className="t-mono"
+                  style={{
+                    padding: "7px 14px",
+                    background: "var(--c-agent)",
+                    color: "white",
+                    border: 0,
+                    borderRadius: 6,
+                    fontSize: 12,
+                    cursor: envSaving ? "wait" : "pointer",
+                    letterSpacing: "-0.005em",
+                  }}
+                >
+                  {envSaving ? "Saving…" : "Save to .env.local"}
+                </button>
+                {envMsg && (
+                  <span
+                    className="t-mono"
+                    style={{
+                      fontSize: 11,
+                      color: envMsg.ok ? "var(--c-good)" : "var(--c-error)",
+                    }}
+                  >
+                    {envMsg.text}
+                  </span>
+                )}
+              </div>
+            </Section>
+
             <Section eyebrow="Spend" title="Budget" accent="agent">
               <p className="text-[12.5px] text-fg-soft mb-2.5" style={{ letterSpacing: "-0.005em" }}>
                 Daily Anthropic API spend cap (USD). Set 0 for no limit. Agent calls hard-fail past the cap.
