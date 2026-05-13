@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { usePoll } from "@/lib/hooks";
+import { migrateKey } from "@/lib/ls-migrate";
 import type { Tod } from "./TodFrame";
 import { todEmoji, weatherEmoji } from "./Glyph";
 
 type Weather = { tempF: number; hi: number; lo: number; code: number; city: string; region: string };
 
-const LS_LOC = "ai-os.weather.loc";
-const LS_DATA = "ai-os.weather.data";
+const LS_LOC = "daycmd.weather.loc";
+const LS_DATA = "daycmd.weather.data";
 const CACHE_MS = 30 * 60_000;
 
 function getCachedWeather(): Weather | null {
@@ -83,6 +84,8 @@ export function Masthead({
 
   const [weather, setWeather] = useState<Weather | null>(null);
   useEffect(() => {
+    migrateKey("ai-os.weather.loc", LS_LOC);
+    migrateKey("ai-os.weather.data", LS_DATA);
     const cached = getCachedWeather();
     if (cached) setWeather(cached);
     const rawLoc = localStorage.getItem(LS_LOC);

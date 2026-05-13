@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { migrateKey } from "@/lib/ls-migrate";
 
-const POMO_STATE_LS = "ai-os.pomo.state";
-const POMO_TODAY_LS = "ai-os.pomo.today";
-const POMO_DAY_LS = "ai-os.pomo.day";
-const POMO_PROJECT_LS = "ai-os.pomo.project";
+const POMO_STATE_LS = "daycmd.pomo.state";
+const POMO_TODAY_LS = "daycmd.pomo.today";
+const POMO_DAY_LS = "daycmd.pomo.day";
+const POMO_PROJECT_LS = "daycmd.pomo.project";
 const POMO_DUR_MIN = 25;
 const GOAL = 6;
 
@@ -52,6 +53,10 @@ export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: stri
   const completedRef = useRef(false);
 
   useEffect(() => {
+    migrateKey("ai-os.pomo.state", POMO_STATE_LS);
+    migrateKey("ai-os.pomo.today", POMO_TODAY_LS);
+    migrateKey("ai-os.pomo.day", POMO_DAY_LS);
+    migrateKey("ai-os.pomo.project", POMO_PROJECT_LS);
     setState(loadState());
     setToday(loadTodayCount());
     const p = localStorage.getItem(POMO_PROJECT_LS);

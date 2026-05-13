@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { SkillDef } from "@/lib/skills-defs";
+import { migrateKey, migratePrefix } from "@/lib/ls-migrate";
 
-export const CATEGORY_LS_KEY = "ai-os.agent.category";
-export const RUN_SKILL_EVENT = "ai-os:run-skill";
+export const CATEGORY_LS_KEY = "daycmd.agent.category";
+export const RUN_SKILL_EVENT = "daycmd:run-skill";
 
 export type Attachment =
   | { kind: "image"; mediaType: string; data: string; name: string }
@@ -18,8 +19,17 @@ export type Msg = {
   attachments?: Attachment[];
 };
 
-const MESSAGES_LS_KEY = (cat: string) => `ai-os.agent.messages.${cat}`;
-const CONTAINER_LS_KEY = (cat: string) => `ai-os.agent.container.${cat}`;
+const MESSAGES_LS_KEY = (cat: string) => `daycmd.agent.messages.${cat}`;
+const CONTAINER_LS_KEY = (cat: string) => `daycmd.agent.container.${cat}`;
+
+let _agentMigrationRun = false;
+function migrateAgentKeys(): void {
+  if (_agentMigrationRun) return;
+  _agentMigrationRun = true;
+  migrateKey("ai-os.agent.category", CATEGORY_LS_KEY);
+  migratePrefix("ai-os.agent.messages.", "daycmd.agent.messages.");
+  migratePrefix("ai-os.agent.container.", "daycmd.agent.container.");
+}
 
 function loadMessages(cat: string): Msg[] {
   if (typeof window === "undefined") return [];
@@ -75,6 +85,7 @@ export function useAgent(initialCategory?: string) {
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    migrateAgentKeys();
     let cancelled = false;
     fetch("/api/kb")
       .then((r) => r.json())
