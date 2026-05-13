@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { mutate, usePoll } from "@/lib/hooks";
 import type { ObsidianTask, Priority } from "@/lib/tasks-parser";
 import { Section } from "./Section";
@@ -13,6 +13,13 @@ const PRIO_GLYPH: Record<NonNullable<Priority>, string> = {
   lowest: "⏬",
 };
 
+export function formatTaskForEdit(t: ObsidianTask): string {
+  const parts: string[] = [t.text];
+  if (t.priority) parts.push(`!${t.priority}`);
+  if (t.due) parts.push(`📅 ${t.due}`);
+  return parts.join(" ");
+}
+
 function fmtDue(due: string | null): string {
   if (!due) return "—";
   const today = new Date().toISOString().slice(0, 10);
@@ -21,13 +28,112 @@ function fmtDue(due: string | null): string {
   return due.slice(5);
 }
 
-function TaskRow({ t, onToggle }: { t: ObsidianTask; onToggle: (t: ObsidianTask) => void }) {
+function TaskRow({
+  t,
+  onToggle,
+  onEdit,
+}: {
+  t: ObsidianTask;
+  onToggle: (t: ObsidianTask) => void;
+  onEdit: (t: ObsidianTask, draft: string) => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      requestAnimationFrame(() => inputRef.current?.select());
+    }
+  }, [editing]);
+
+  function startEdit() {
+    if (t.done) return;
+    setDraft(formatTaskForEdit(t));
+    setError(null);
+    setEditing(true);
+  }
+
+  async function commit() {
+    if (busy) return;
+    if (!draft.trim() || draft.trim() === formatTaskForEdit(t)) {
+      setEditing(false);
+      return;
+    }
+    setBusy(true);
+    const res = await onEdit(t, draft);
+    setBusy(false);
+    if (res.ok) {
+      setEditing(false);
+    } else {
+      setError(res.error ?? "save failed");
+    }
+  }
+
   const prioColor =
     t.priority === "highest" || t.priority === "high"
       ? "var(--c-error)"
       : "var(--fg-soft)";
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-3 py-2 text-[14px]">
+        <button
+          type="button"
+          className={`check ${t.done ? "done" : ""}`}
+          aria-hidden
+          tabIndex={-1}
+          style={{ opacity: 0.4, cursor: "default" }}
+        />
+        <span className="src-dot src-tasks" />
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void commit();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              setEditing(false);
+              setError(null);
+            }
+          }}
+          onBlur={() => {
+            if (!busy) void commit();
+          }}
+          disabled={busy}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            background: "transparent",
+            border: 0,
+            outline: 0,
+            color: "var(--fg)",
+            fontFamily: "inherit",
+            fontSize: 14,
+            letterSpacing: "-0.005em",
+            borderBottom: "1px solid var(--c-tasks)",
+          }}
+        />
+        {error && (
+          <span
+            className="t-mono text-[10px]"
+            style={{ color: "var(--c-error)" }}
+          >
+            {error}
+          </span>
+        )}
+        <span className="t-mono text-[10px] text-fg-soft">⏎ save · esc</span>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center gap-3 py-2 text-[14px]">
+    <div className="flex items-center gap-3 py-2 text-[14px] group">
       <button
         type="button"
         onClick={() => onToggle(t)}
@@ -35,16 +141,27 @@ function TaskRow({ t, onToggle }: { t: ObsidianTask; onToggle: (t: ObsidianTask)
         aria-label={t.done ? "Mark undone" : "Mark done"}
       />
       <span className="src-dot src-tasks" />
-      <span
-        className="flex-1 truncate"
+      <button
+        type="button"
+        onClick={startEdit}
+        disabled={t.done}
+        className="flex-1 truncate text-left"
+        title="Click to edit"
         style={{
+          background: "transparent",
+          border: 0,
+          padding: 0,
+          fontFamily: "inherit",
+          fontSize: 14,
           letterSpacing: "-0.005em",
+          color: "var(--fg)",
           textDecoration: t.done ? "line-through" : "none",
           opacity: t.done ? 0.5 : 1,
+          cursor: t.done ? "default" : "text",
         }}
       >
         {t.text}
-      </span>
+      </button>
       {t.priority && (
         <span
           className="t-mono text-[11px]"
@@ -303,6 +420,36 @@ export function TaskList({ projectFilter }: { projectFilter?: string }) {
     }
   }
 
+  async function edit(
+    t: ObsidianTask,
+    rawDraft: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const parsed = parseDraft(rawDraft);
+    if (!parsed.text) return { ok: false, error: "text required" };
+    try {
+      const res = await fetch("/api/obsidian/tasks", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          file: t.file,
+          line: t.line,
+          originalText: t.text,
+          text: parsed.text,
+          due: parsed.due,
+          priority: parsed.priority,
+        }),
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        return { ok: false, error: j.error ?? `HTTP ${res.status}` };
+      }
+      mutate("/api/obsidian/tasks");
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  }
+
   const headerRight = (
     <span className="t-mono text-[11px] text-fg-soft">
       {grouped.overdue.length > 0 && (
@@ -354,7 +501,7 @@ export function TaskList({ projectFilter }: { projectFilter?: string }) {
               )}
             </div>
             {items.map((t) => (
-              <TaskRow key={t.id} t={t} onToggle={toggle} />
+              <TaskRow key={t.id} t={t} onToggle={toggle} onEdit={edit} />
             ))}
           </div>
         );

@@ -58,6 +58,66 @@ export async function appendTask(input: {
   };
 }
 
+const TASK_LINE_RE = /^(\s*[-*+]\s+)\[(.)\](\s+)(.*)$/;
+
+type Priority = "highest" | "high" | "medium" | "low" | "lowest";
+
+function buildTaskBody(input: {
+  text: string;
+  priority?: Priority;
+  due?: string;
+  start?: string;
+  scheduled?: string;
+}): string {
+  const parts: string[] = [input.text.trim()];
+  if (input.priority) parts.push(PRIORITY_GLYPH[input.priority]);
+  if (input.due) parts.push(`📅 ${input.due}`);
+  if (input.start) parts.push(`🛫 ${input.start}`);
+  if (input.scheduled) parts.push(`⏳ ${input.scheduled}`);
+  return parts.join(" ");
+}
+
+export async function editTask(input: {
+  file: string;
+  line: number;
+  originalText?: string;
+  text: string;
+  priority?: Priority;
+  due?: string;
+  start?: string;
+  scheduled?: string;
+}): Promise<
+  | { ok: true; line: number; raw: string }
+  | { ok: false; error: string; status?: number }
+> {
+  const filePath = resolveTaskFile(input.file);
+  let body: string;
+  try {
+    body = await fs.readFile(filePath, "utf8");
+  } catch {
+    return { ok: false, error: `cannot read ${filePath}`, status: 404 };
+  }
+  const lines = body.split("\n");
+  if (input.line < 0 || input.line >= lines.length) {
+    return { ok: false, error: `line ${input.line} out of range`, status: 409 };
+  }
+  const target = lines[input.line];
+  const m = target.match(TASK_LINE_RE);
+  if (!m) {
+    return { ok: false, error: `line ${input.line} is not a task`, status: 409 };
+  }
+  if (input.originalText !== undefined) {
+    const currentText = m[4].trim();
+    if (currentText !== input.originalText.trim()) {
+      return { ok: false, error: "task text has changed on disk", status: 409 };
+    }
+  }
+  const rebuilt = `${m[1]}[${m[2]}]${m[3]}${buildTaskBody(input)}`;
+  lines[input.line] = rebuilt;
+  await fs.writeFile(filePath, lines.join("\n"), "utf8");
+  return { ok: true, line: input.line, raw: rebuilt };
+}
+
 export async function markTaskDone(input: {
   file: string;
   text: string;
