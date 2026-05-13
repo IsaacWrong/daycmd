@@ -13,6 +13,15 @@ const PRIORITY_GLYPH: Record<string, string> = {
   lowest: "⏬",
 };
 
+function resolveTaskFile(file: string): string {
+  const normalized = file.replace(/\.md$/, "") + ".md";
+  if (path.isAbsolute(normalized)) return normalized;
+  if (normalized.startsWith(`Tasks${path.sep}`) || normalized.startsWith("Tasks/")) {
+    return path.join(env.VAULT_PATH, normalized);
+  }
+  return path.join(TASKS_DIR(), normalized);
+}
+
 export async function appendTask(input: {
   file?: string;
   text: string;
@@ -53,10 +62,7 @@ export async function markTaskDone(input: {
   file: string;
   text: string;
 }): Promise<{ ok: true; matched: number } | { ok: false; error: string }> {
-  const filename = input.file.replace(/\.md$/, "") + ".md";
-  const filePath = filename.startsWith(env.VAULT_PATH)
-    ? filename
-    : path.join(TASKS_DIR(), filename);
+  const filePath = resolveTaskFile(input.file);
   let body: string;
   try {
     body = await fs.readFile(filePath, "utf8");
