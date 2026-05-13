@@ -123,6 +123,8 @@ Rules:
 - Keep pages dense. 3 sentences of signal beats 3 paragraphs of fluff.
 - If a raw is just a one-line agent run with no real content, skip it (don't make wiki pages for noise, but optionally note in INDEX under "Recent agent runs" if relevant).
 - Use Obsidian [[wikilinks]] in body.
+- **Never use relative time words** in any wiki page: no "today", "yesterday", "tomorrow", "this week", "now", "currently", "recently", "earlier", "soon". Use absolute ISO dates (YYYY-MM-DD) or weekday + date ("Tue 5/13"). Section headers must be date-stamped, not "today"-stamped — write \`### Calendar — 2026-05-12\`, never \`### Today's Calendar\`. The only "as of" claim is the frontmatter \`updated:\` field plus, on INDEX, one optional \`Last compile: YYYY-MM-DD\` header.
+- **INDEX is not a dashboard mirror.** Don't enumerate live state (calendar events, open tasks, GitHub PRs, inbox items) in INDEX. The live app surfaces that. INDEX is a pointer to concepts/sources/people pages plus enduring open questions.
 
 Be efficient. Don't read every wiki page upfront — only the ones a raw touches. Batch tool calls when possible.`;
 }

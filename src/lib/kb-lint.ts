@@ -82,11 +82,16 @@ Steps:
 1. schema_read — understand the rules.
 2. wiki_list + wiki_index_read — overview.
 3. Sample-read key wiki pages (especially concepts/) to check:
-   - Contradictions (page A says X, page B says not X)
+   - Contradictions
    - Orphans (concept pages not linked from anywhere — check INDEX and other concepts for [[wikilinks]])
    - Missing concepts (mentioned via [[link]] but no page exists)
    - Broken links
 4. report_lint with structured findings and a summary.
+
+What "contradiction" means here:
+- Two pages make conflicting *factual* claims about the same thing (e.g. page A says X started in 2024, page B says 2025).
+- It is NOT a contradiction when a page describes past events with past-dated headers, even if the date is no longer "today". A page dated 2026-05-12 with calendar entries for that day is correct, not stale. The fact that the dashboard's current date has moved on is irrelevant.
+- DO flag relative time words ("today", "yesterday", "this week", "now") in wiki pages — those violate the schema and cause real drift. Report those as type "other" with a clear description.
 
 Don't try to read every page. Spot-check. Lint should be cheap.
 

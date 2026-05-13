@@ -58,6 +58,19 @@ wiki/
 ## When in doubt
 
 Prefer fewer, denser pages over more, sparser pages. The user can always grep raw/ for details — wiki is for distilled understanding.
+
+## Time language (applies to every wiki page)
+
+The wiki is read days, weeks, or months after it was written. Anything tied to "now" goes stale and gets flagged on lint. Hard rules:
+
+- **No relative time language.** Never write "today", "yesterday", "tomorrow", "this week", "now", "currently", "recently", "earlier", or "soon" in any wiki page. Use absolute ISO dates (YYYY-MM-DD) or weekday + date ("Tue 5/13").
+- **Section headers are date-stamped, not "today"-stamped.** Bad: \`### Today's Calendar\`, \`### Completed Today\`. Good: \`### Calendar — 2026-05-12\`, \`### Completed 2026-05-12\`.
+- **No transient dashboard mirror.** The wiki is not a snapshot of the live app. Don't enumerate calendar events, open tasks, GitHub PRs, or inbox state in INDEX. Those live in the dashboard. INDEX is a pointer to concepts/sources/people pages, plus enduring open questions.
+- **One acceptable "as of" claim per page** — \`updated: YYYY-MM-DD\` in frontmatter, and at most one header line like "Last compile: YYYY-MM-DD" on INDEX.
+
+## Lint posture
+
+A contradiction is two pages making conflicting factual claims about the *same* thing (e.g. page A says X started in 2024, page B says 2025). A page describing past events with past-dated headers is **not** a contradiction, even if those dates are no longer "today".
 `;
 
 export const CATEGORY_SCHEMAS: Record<string, string> = {
@@ -74,6 +87,12 @@ Light-touch category. Daily ops: morning briefs, inbox triage, captures, plans, 
 ## Compile cadence
 
 Light. Mostly summarize-and-archive. Don't try to build a knowledge graph here.
+
+## INDEX.md rules (reinforces global)
+
+- Never write "today", "yesterday", "this week", "now", "recently". Use absolute dates.
+- Headers stamp the date: \`### Calendar — 2026-05-12\`, not \`### Today's Calendar\`.
+- No transient dashboard data (calendar, open tasks, inbox state). Reference by date only when a follow-up note needs the context.
 `,
 
   Research: `# Research Schema
