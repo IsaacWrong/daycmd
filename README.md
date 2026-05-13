@@ -1,13 +1,13 @@
 <div align="center">
 
-# AI OS
+# Daycmd
 
 **A local-first, agent-driven new-tab page for people juggling a vault, a job, and three side projects.**
 
 Opens with your browser. Knows your day. Routes the work through Claude.
 
 <!-- Replace with a 30-second screen recording or hero gif. -->
-<!-- ![AI OS — hero](docs/hero.gif) -->
+<!-- ![Daycmd — hero](docs/hero.gif) -->
 
 </div>
 
@@ -93,8 +93,8 @@ Lint findings flow into the Errors section + mirror to `Errors/{date}.md` in the
 ## Quickstart
 
 ```bash
-git clone https://github.com/IsaacWrong/ai-os.git
-cd ai-os
+git clone https://github.com/IsaacWrong/daycmd.git
+cd daycmd
 npm install
 cp .env.local.example .env.local
 # minimum: VAULT_PATH + ANTHROPIC_API_KEY
@@ -125,9 +125,9 @@ Next.js 16 · React 19 · TypeScript · Tailwind v4 (`@theme inline` design toke
 
 ## Architecture notes
 
-- **Vault-as-truth.** All notes, tasks, daily entries, KB pages, and lint output live as markdown in the vault. Open them in Obsidian, edit them in Vim, sync via Obsidian Sync or git. AI OS reads + writes through plain `fs`.
+- **Vault-as-truth.** All notes, tasks, daily entries, KB pages, and lint output live as markdown in the vault. Open them in Obsidian, edit them in Vim, sync via Obsidian Sync or git. Daycmd reads + writes through plain `fs`.
 - **SQLite is a fast cache.** `data/ai-os.db` holds OAuth tokens, usage rows, automations, error log, agent threads. Gitignored. Errors are also mirrored to `Errors/{date}.md` in the vault for cross-device durability.
-- **Time-of-day palette via CSS vars.** `.tod-*` classes on `.aios-frame` swap `--bg-a`, `--fg`, `--rule`, `--glass`, orb colors, etc. No `dark:` Tailwind variants anywhere.
+- **Time-of-day palette via CSS vars.** `.tod-*` classes on `.daycmd-frame` swap `--bg-a`, `--fg`, `--rule`, `--glass`, orb colors, etc. No `dark:` Tailwind variants anywhere.
 - **OKLCH-relative colors throughout** (`oklch(from var(--fg) l c h / 0.1)`). Tailwind v4 + modern browsers.
 - **Scheduler boots from `instrumentation.ts`.** Default KB compile + lint rows are seeded per category on first run (idempotent). Stale-sweep endpoint at `POST /api/kb/auto-compile`.
 - **All input validated through `zod` schemas at API boundaries.**

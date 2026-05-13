@@ -43,7 +43,7 @@ function formatMS(ms: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-export function FocusTile({ defaultProject = "ai-os" }: { defaultProject?: string }) {
+export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: string }) {
   const [state, setState] = useState<PomoState>(null);
   const [today, setToday] = useState(0);
   const [now, setNow] = useState<number>(() => Date.now());

@@ -9,12 +9,12 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 declare global {
   // eslint-disable-next-line no-var
-  var __aios_db: Database.Database | undefined;
+  var __daycmd_db: Database.Database | undefined;
 }
 
 export const db =
-  globalThis.__aios_db ??
-  (globalThis.__aios_db = (() => {
+  globalThis.__daycmd_db ??
+  (globalThis.__daycmd_db = (() => {
     const d = new Database(DB_PATH);
     d.pragma("journal_mode = WAL");
     d.exec(`

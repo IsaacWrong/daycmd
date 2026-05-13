@@ -210,7 +210,7 @@ const wikilinkClick = EditorView.domEventHandlers({
   },
 });
 
-// ── Theme: maps to AI OS tokens ────────────────────────────────────────
+// ── Theme: maps to Daycmd tokens ───────────────────────────────────────
 const obsidianTheme = EditorView.theme({
   "&": {
     color: "var(--fg)",

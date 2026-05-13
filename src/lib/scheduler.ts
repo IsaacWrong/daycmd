@@ -3,20 +3,20 @@ import { ensureDefaultKbAutomations, listAutomations, runAutomation } from "./au
 
 declare global {
   // eslint-disable-next-line no-var
-  var __aios_scheduler: {
+  var __daycmd_scheduler: {
     tasks: Map<number, { task: ScheduledTask; cron: string }>;
     started: boolean;
   } | undefined;
 }
 
 function state() {
-  if (!globalThis.__aios_scheduler) {
-    globalThis.__aios_scheduler = {
+  if (!globalThis.__daycmd_scheduler) {
+    globalThis.__daycmd_scheduler = {
       tasks: new Map(),
       started: false,
     };
   }
-  return globalThis.__aios_scheduler;
+  return globalThis.__daycmd_scheduler;
 }
 
 function unschedule(id: number) {
