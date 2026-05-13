@@ -82,6 +82,45 @@ export async function updateEnvFile(
   await fs.rename(tmp, target);
 }
 
+export type VaultPathCheck = { ok: boolean; reason?: string };
+
+export async function validateVaultPath(p: string): Promise<VaultPathCheck> {
+  const trimmed = p.trim();
+  if (!trimmed) return { ok: false, reason: "path is empty" };
+  if (!path.isAbsolute(trimmed)) {
+    return { ok: false, reason: "path must be absolute" };
+  }
+  let stat;
+  try {
+    stat = await fs.stat(trimmed);
+  } catch {
+    return { ok: false, reason: "directory not found on disk" };
+  }
+  if (!stat.isDirectory()) {
+    return { ok: false, reason: "path exists but is not a directory" };
+  }
+  try {
+    const obsidianStat = await fs.stat(path.join(trimmed, ".obsidian"));
+    if (obsidianStat.isDirectory()) return { ok: true };
+  } catch {
+    // fall through to looser check
+  }
+  const markers = ["Tasks", "Daily", "Projects"];
+  for (const marker of markers) {
+    try {
+      const s = await fs.stat(path.join(trimmed, marker));
+      if (s.isDirectory()) return { ok: true };
+    } catch {
+      // keep looking
+    }
+  }
+  return {
+    ok: false,
+    reason:
+      "directory has no .obsidian/, Tasks/, Daily/, or Projects/ — doesn't look like your vault",
+  };
+}
+
 export type EnvStatus = {
   vaultPath: { present: boolean; valid: boolean; reason?: string };
   anthropicKey: { present: boolean };

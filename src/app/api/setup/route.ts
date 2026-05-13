@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getEnvStatus, updateEnvFile, type EnvKey } from "@/lib/env-file";
+import {
+  getEnvStatus,
+  updateEnvFile,
+  validateVaultPath,
+  type EnvKey,
+} from "@/lib/env-file";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +33,15 @@ export async function POST(req: Request) {
     );
   }
   const updates = parsed.data as Partial<Record<EnvKey, string>>;
+  if (updates.VAULT_PATH !== undefined && updates.VAULT_PATH !== "") {
+    const check = await validateVaultPath(updates.VAULT_PATH);
+    if (!check.ok) {
+      return NextResponse.json(
+        { error: `VAULT_PATH invalid: ${check.reason}` },
+        { status: 400 },
+      );
+    }
+  }
   try {
     await updateEnvFile(updates);
   } catch (err) {

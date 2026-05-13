@@ -1,6 +1,12 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { render } from "@testing-library/react";
-import { TodFrame, todForHour, type Tod } from "./TodFrame";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, render, renderHook } from "@testing-library/react";
+import {
+  TodFrame,
+  todForHour,
+  useFocusMode,
+  useTod,
+  type Tod,
+} from "./TodFrame";
 
 describe("todForHour", () => {
   const cases: Array<[number, Tod]> = [
@@ -25,6 +31,79 @@ describe("todForHour", () => {
       expect(todForHour(h)).toBe(expected);
     });
   }
+});
+
+describe("useTod", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns the tod for the current hour on first render", () => {
+    vi.setSystemTime(new Date("2026-05-13T08:30:00"));
+    const { result } = renderHook(() => useTod());
+    expect(result.current).toBe("dawn");
+  });
+
+  it("updates when the system clock crosses into a new tod window", () => {
+    vi.setSystemTime(new Date("2026-05-13T10:30:00"));
+    const { result } = renderHook(() => useTod());
+    expect(result.current).toBe("morning");
+
+    vi.setSystemTime(new Date("2026-05-13T12:00:00"));
+    act(() => {
+      vi.advanceTimersByTime(10 * 60_000);
+    });
+    expect(result.current).toBe("noon");
+  });
+});
+
+describe("useFocusMode", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("defaults to false when no value is stored", () => {
+    const { result } = renderHook(() => useFocusMode());
+    expect(result.current[0]).toBe(false);
+  });
+
+  it("reads the persisted '1' value on mount", () => {
+    localStorage.setItem("daycmd.focus-mode", "1");
+    const { result } = renderHook(() => useFocusMode());
+    expect(result.current[0]).toBe(true);
+  });
+
+  it("migrates from the legacy ai-os.focus-mode key", () => {
+    localStorage.setItem("ai-os.focus-mode", "1");
+    const { result } = renderHook(() => useFocusMode());
+    expect(result.current[0]).toBe(true);
+    expect(localStorage.getItem("ai-os.focus-mode")).toBeNull();
+    expect(localStorage.getItem("daycmd.focus-mode")).toBe("1");
+  });
+
+  it("toggle flips state and persists '1' / '0'", () => {
+    const { result } = renderHook(() => useFocusMode());
+    act(() => result.current[1]());
+    expect(result.current[0]).toBe(true);
+    expect(localStorage.getItem("daycmd.focus-mode")).toBe("1");
+    act(() => result.current[1]());
+    expect(result.current[0]).toBe(false);
+    expect(localStorage.getItem("daycmd.focus-mode")).toBe("0");
+  });
+
+  it("set(value) replaces state explicitly", () => {
+    const { result } = renderHook(() => useFocusMode());
+    act(() => result.current[2](true));
+    expect(result.current[0]).toBe(true);
+    act(() => result.current[2](false));
+    expect(result.current[0]).toBe(false);
+  });
 });
 
 describe("TodFrame", () => {

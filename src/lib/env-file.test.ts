@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { getEnvStatus, SECRET_KEYS, updateEnvFile } from "./env-file";
+import {
+  getEnvStatus,
+  SECRET_KEYS,
+  updateEnvFile,
+  validateVaultPath,
+} from "./env-file";
 
 let cwd: string;
 let envFile: string;
@@ -65,6 +70,55 @@ describe("updateEnvFile", () => {
     await updateEnvFile({ VAULT_PATH: "/Users/me/My Vault" });
     const body = await fs.readFile(envFile, "utf8");
     expect(body).toContain('VAULT_PATH="/Users/me/My Vault"');
+  });
+});
+
+describe("validateVaultPath", () => {
+  it("rejects an empty path", async () => {
+    expect(await validateVaultPath("   ")).toEqual({
+      ok: false,
+      reason: "path is empty",
+    });
+  });
+
+  it("rejects a relative path", async () => {
+    const res = await validateVaultPath("./vault");
+    expect(res.ok).toBe(false);
+    expect(res.reason).toMatch(/absolute/);
+  });
+
+  it("rejects a path that does not exist on disk", async () => {
+    const res = await validateVaultPath(path.join(cwd, "missing"));
+    expect(res.ok).toBe(false);
+    expect(res.reason).toMatch(/not found/);
+  });
+
+  it("rejects a path that exists but is a file", async () => {
+    const filePath = path.join(cwd, "file.md");
+    await fs.writeFile(filePath, "hi");
+    const res = await validateVaultPath(filePath);
+    expect(res.ok).toBe(false);
+    expect(res.reason).toMatch(/not a directory/);
+  });
+
+  it("accepts a directory that contains .obsidian/", async () => {
+    await fs.mkdir(path.join(cwd, ".obsidian"), { recursive: true });
+    expect(await validateVaultPath(cwd)).toEqual({ ok: true });
+  });
+
+  it("accepts a directory that contains a known vault marker folder", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "vault-marker-"));
+    await fs.mkdir(path.join(root, "Tasks"));
+    expect(await validateVaultPath(root)).toEqual({ ok: true });
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it("rejects a directory that looks empty", async () => {
+    const empty = await fs.mkdtemp(path.join(os.tmpdir(), "empty-"));
+    const res = await validateVaultPath(empty);
+    expect(res.ok).toBe(false);
+    expect(res.reason).toMatch(/doesn't look like/);
+    await fs.rm(empty, { recursive: true, force: true });
   });
 });
 
