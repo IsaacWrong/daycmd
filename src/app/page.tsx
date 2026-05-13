@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useFocusMode, useTod, TodFrame } from "@/components/redesign/TodFrame";
 import { Masthead } from "@/components/redesign/Masthead";
 import { FocusTile } from "@/components/redesign/FocusTile";
@@ -20,6 +21,17 @@ import { AgentBar, SkillStrip } from "@/components/redesign/AgentBar";
 export default function Home() {
   const tod = useTod();
   const [focus, toggleFocus] = useFocusMode();
+  const router = useRouter();
+
+  // Bounce to /setup if VAULT_PATH or ANTHROPIC_API_KEY is missing.
+  useEffect(() => {
+    fetch("/api/setup")
+      .then((r) => r.json())
+      .then((s: { ready?: boolean }) => {
+        if (s && !s.ready) router.replace("/setup");
+      })
+      .catch(() => {});
+  }, [router]);
 
   // Fire stale KB auto-compile sweep on mount. Server-side dedupes (5-min debounce).
   useEffect(() => {

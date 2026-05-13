@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 const Env = z.object({
-  VAULT_PATH: z.string().min(1, "VAULT_PATH required"),
+  // Empty when not configured — the setup wizard at /setup writes it. Library
+  // code that reads from the vault should check truthiness and surface a
+  // helpful error instead of crashing at module load.
+  VAULT_PATH: z.string().optional().default(""),
   GITHUB_TOKEN: z.string().optional().default(""),
   DISCORD_BOT_TOKEN: z.string().optional().default(""),
   GOOGLE_CLIENT_ID: z.string().optional().default(""),
