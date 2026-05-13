@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { usePoll } from "@/lib/hooks";
 import type { RepoStats } from "@/lib/github";
 import type { ObsidianTask } from "@/lib/tasks-parser";
@@ -260,14 +261,129 @@ function ProjectRow({ p }: { p: ProjectDTO }) {
 }
 
 export function ProjectsList() {
-  const { data } = usePoll<{ projects: ProjectDTO[] }>("/api/projects", 60_000);
+  const { data, refresh } = usePoll<{ projects: ProjectDTO[] }>("/api/projects", 60_000);
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [repo, setRepo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), repo: repo.trim() || undefined }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.error ?? `Failed (${res.status})`);
+      }
+      setName("");
+      setRepo("");
+      setAdding(false);
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <SectionMini title="Projects">
+    <SectionMini
+      title="Projects"
+      right={
+        <span className="ml-auto flex items-center gap-3">
+          <Link
+            href="/projects"
+            className="t-mono text-[10px] text-fg-soft hover:text-fg"
+            title="All projects overview"
+          >
+            all →
+          </Link>
+          <button
+            type="button"
+            onClick={() => setAdding((v) => !v)}
+            className="t-mono text-[10px] text-fg-soft hover:text-fg"
+            style={{
+              background: "transparent",
+              border: 0,
+              padding: 0,
+              cursor: "pointer",
+            }}
+            title="Add project"
+          >
+            {adding ? "cancel" : "+ new"}
+          </button>
+        </span>
+      }
+    >
       {(data?.projects ?? []).slice(0, 6).map((p) => (
         <ProjectRow key={p.name} p={p} />
       ))}
-      {(!data || data.projects.length === 0) && (
+      {(!data || data.projects.length === 0) && !adding && (
         <p className="text-[12px] text-fg-soft py-1">No active projects.</p>
+      )}
+      {adding && (
+        <form onSubmit={submit} className="py-1.5 flex flex-col gap-1.5">
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Name"
+            disabled={busy}
+            className="text-[12.5px]"
+            style={{
+              background: "transparent",
+              border: "1px solid var(--rule)",
+              borderRadius: 4,
+              padding: "4px 6px",
+              color: "var(--fg)",
+              outline: 0,
+            }}
+          />
+          <input
+            value={repo}
+            onChange={(e) => setRepo(e.target.value)}
+            placeholder="owner/repo (optional)"
+            disabled={busy}
+            className="text-[12.5px]"
+            style={{
+              background: "transparent",
+              border: "1px solid var(--rule)",
+              borderRadius: 4,
+              padding: "4px 6px",
+              color: "var(--fg)",
+              outline: 0,
+            }}
+          />
+          {error && (
+            <span className="text-[11px]" style={{ color: "var(--c-error)" }}>
+              {error}
+            </span>
+          )}
+          <button
+            type="submit"
+            disabled={busy || !name.trim()}
+            className="t-mono text-[11px] self-start"
+            style={{
+              padding: "3px 8px",
+              border: "1px solid var(--rule)",
+              borderRadius: 4,
+              background: "transparent",
+              color: "var(--fg)",
+              cursor: busy ? "default" : "pointer",
+              opacity: busy || !name.trim() ? 0.5 : 1,
+            }}
+          >
+            {busy ? "creating…" : "create"}
+          </button>
+        </form>
       )}
     </SectionMini>
   );

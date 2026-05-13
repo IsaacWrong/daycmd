@@ -202,6 +202,36 @@ export function buildTimeEntry(startISO: string, endISO: string): TimeEntry {
   };
 }
 
+export async function createProject(
+  name: string,
+  fields: { status?: string; repo?: string; url?: string; next?: string } = {},
+): Promise<Project> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Project name required");
+  if (/[\\/]/.test(trimmed)) throw new Error("Project name cannot contain slashes");
+  const filePath = projectPath(trimmed);
+  try {
+    await fs.access(filePath);
+    throw new Error(`Project "${trimmed}" already exists`);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  await fs.mkdir(PROJECTS_DIR, { recursive: true });
+  const fm: ProjectFrontmatter = {
+    type: "project",
+    status: fields.status ?? "idea",
+    started: format(new Date(), "yyyy-MM-dd"),
+    weekly_hours: 0,
+  };
+  if (fields.repo) fm.repo = fields.repo;
+  if (fields.url) fm.url = fields.url;
+  if (fields.next) fm.next = fields.next;
+  const body = `\n## Next\n\n${fields.next ?? ""}\n\n## Log\n\n## Ideas\n\n`;
+  const serialized = matter.stringify(body, fm as Record<string, unknown>);
+  await fs.writeFile(filePath, serialized, "utf8");
+  return readProject(trimmed);
+}
+
 export async function setNext(name: string, next: string): Promise<Project> {
   return updateFrontmatter(name, { next });
 }

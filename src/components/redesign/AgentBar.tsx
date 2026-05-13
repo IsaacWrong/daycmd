@@ -183,7 +183,10 @@ export function AgentBar({
   const [input, setInput] = useState("");
   const [mounted, setMounted] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [catOpen, setCatOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const catBtnRef = useRef<HTMLButtonElement>(null);
+  const catMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -221,6 +224,25 @@ export function AgentBar({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [agent, category]);
+
+  useEffect(() => {
+    if (!catOpen) return;
+    function onDocClick(e: MouseEvent) {
+      const t = e.target as Node;
+      if (catMenuRef.current?.contains(t)) return;
+      if (catBtnRef.current?.contains(t)) return;
+      setCatOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setCatOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [catOpen]);
 
   useEffect(() => {
     function handler(e: Event) {
@@ -494,26 +516,76 @@ export function AgentBar({
             >
               ✦
             </span>
-            <button
-              type="button"
-              onClick={() => {
-                // cycle to next category for quick switching
-                const idx = agent.categories.indexOf(agent.category);
-                const next = agent.categories[(idx + 1) % agent.categories.length];
-                if (next) agent.setCategory(next);
-              }}
-              className="text-[13px] font-medium"
-              style={{
-                background: "transparent",
-                border: 0,
-                padding: 0,
-                color: "var(--fg)",
-                cursor: "pointer",
-              }}
-              title="Click to cycle category"
-            >
-              {agent.category} <span style={{ opacity: 0.5 }}>▾</span>
-            </button>
+            <div style={{ position: "relative" }}>
+              <button
+                ref={catBtnRef}
+                type="button"
+                onClick={() => setCatOpen((v) => !v)}
+                className="text-[13px] font-medium"
+                style={{
+                  background: "transparent",
+                  border: 0,
+                  padding: 0,
+                  color: "var(--fg)",
+                  cursor: "pointer",
+                }}
+                title="Pick category"
+                aria-haspopup="listbox"
+                aria-expanded={catOpen}
+              >
+                {agent.category} <span style={{ opacity: 0.5 }}>▾</span>
+              </button>
+              {catOpen && (
+                <div
+                  ref={catMenuRef}
+                  role="listbox"
+                  className="glass"
+                  style={{
+                    position: "absolute",
+                    bottom: "calc(100% + 8px)",
+                    left: 0,
+                    minWidth: 180,
+                    padding: 4,
+                    borderRadius: 10,
+                    border: "1px solid var(--rule)",
+                    boxShadow: "0 18px 40px -16px oklch(0 0 0 / 0.35)",
+                    zIndex: 50,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 1,
+                  }}
+                >
+                  {agent.categories.map((c) => {
+                    const active = c === agent.category;
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onClick={() => {
+                          agent.setCategory(c);
+                          setCatOpen(false);
+                        }}
+                        className="text-[13px] hover:bg-fg-soft/10"
+                        style={{
+                          background: active ? "oklch(from var(--fg) l c h / 0.06)" : "transparent",
+                          border: 0,
+                          padding: "6px 10px",
+                          borderRadius: 6,
+                          color: active ? "var(--c-agent)" : "var(--fg)",
+                          cursor: "pointer",
+                          textAlign: "left",
+                          width: "100%",
+                        }}
+                      >
+                        {c}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             <span
               style={{ width: 1, height: 22, background: "var(--rule)", flexShrink: 0 }}
             />
