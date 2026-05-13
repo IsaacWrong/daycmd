@@ -1,7 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const ENV_PATH = path.join(process.cwd(), ".env.local");
+function envPath(): string {
+  return path.join(process.cwd(), ".env.local");
+}
 
 export type EnvKey =
   | "VAULT_PATH"
@@ -19,7 +21,7 @@ export const SECRET_KEYS: ReadonlySet<EnvKey> = new Set([
 
 async function readEnvFile(): Promise<string> {
   try {
-    return await fs.readFile(ENV_PATH, "utf8");
+    return await fs.readFile(envPath(), "utf8");
   } catch {
     return "";
   }
@@ -74,9 +76,10 @@ export async function updateEnvFile(
   while (next.length && next[next.length - 1].trim() === "") next.pop();
   const body = next.join("\n") + "\n";
 
-  const tmp = `${ENV_PATH}.tmp.${process.pid}`;
+  const target = envPath();
+  const tmp = `${target}.tmp.${process.pid}`;
   await fs.writeFile(tmp, body, "utf8");
-  await fs.rename(tmp, ENV_PATH);
+  await fs.rename(tmp, target);
 }
 
 export type EnvStatus = {
