@@ -2,6 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 
+const INVALIDATE_EVENT = "poll:invalidate";
+
+export function mutate(url: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(INVALIDATE_EVENT, { detail: { url } }));
+}
+
 export function usePoll<T>(
   url: string,
   intervalMs = 30_000,
@@ -30,7 +37,15 @@ export function usePoll<T>(
   useEffect(() => {
     fetcher();
     const id = setInterval(fetcher, intervalMs);
-    return () => clearInterval(id);
+    function onInvalidate(e: Event) {
+      const detail = (e as CustomEvent<{ url: string }>).detail;
+      if (detail?.url === url) fetcher();
+    }
+    window.addEventListener(INVALIDATE_EVENT, onInvalidate);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener(INVALIDATE_EVENT, onInvalidate);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, intervalMs]);
 

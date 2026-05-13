@@ -1,6 +1,6 @@
 "use client";
 
-import { usePoll } from "@/lib/hooks";
+import { mutate, usePoll } from "@/lib/hooks";
 import type { ObsidianTask, Priority } from "@/lib/tasks-parser";
 import { Section } from "./Section";
 
@@ -125,13 +125,16 @@ export function TaskList({ projectFilter }: { projectFilter?: string }) {
   async function toggle(t: ObsidianTask) {
     if (t.done) return;
     try {
-      await fetch("/api/obsidian/tasks", {
+      const res = await fetch("/api/obsidian/tasks", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ file: t.file, text: t.text }),
       });
+      if (res.ok) mutate("/api/obsidian/tasks");
+      else refresh();
+    } catch {
       refresh();
-    } catch {}
+    }
   }
 
   const headerRight = (
