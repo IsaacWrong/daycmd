@@ -38,9 +38,11 @@ function momentToDateFns(fmt: string): string {
     // Seconds
     [/\bss\b/g, "ss"],
     [/(?<![A-Za-z])s(?![A-Za-z])/g, "s"],
-    // AM/PM
-    [/(?<![A-Za-z])A(?![A-Za-z])/g, "aaaa"],
+    // AM/PM — moment uppercase "A" = "AM", lowercase "a" = "am".
+    // Lowercase must run first so the uppercase A→a rewrite below isn't
+    // re-matched on this same pass.
     [/(?<![A-Za-z])a(?![A-Za-z])/g, "aaa"],
+    [/(?<![A-Za-z])A(?![A-Za-z])/g, "a"],
   ];
   let out = fmt;
   for (const [re, rep] of tokens) out = out.replace(re, rep);
