@@ -183,10 +183,18 @@ export function AgentBar({
   const [input, setInput] = useState("");
   const [mounted, setMounted] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (expanded) {
+      const id = requestAnimationFrame(() => inputRef.current?.focus());
+      return () => cancelAnimationFrame(id);
+    }
+  }, [expanded]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -234,12 +242,30 @@ export function AgentBar({
 
   const inputField = (
     <input
+      ref={inputRef}
       value={input}
       onChange={(e) => setInput(e.target.value)}
       placeholder={agent.busy ? "Working…" : "Ask anything, or run a skill…"}
       disabled={agent.busy}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        background: "transparent",
+        border: 0,
+        outline: 0,
+        fontFamily: "inherit",
+        fontSize: 15,
+        color: "var(--fg)",
+        letterSpacing: "-0.005em",
+      }}
     />
   );
+
+  function focusInput(e: React.MouseEvent<HTMLDivElement>) {
+    const t = e.target as HTMLElement;
+    if (t.closest("button, select, a, input, textarea")) return;
+    inputRef.current?.focus();
+  }
 
   if (variant === "workspace") {
     return (
@@ -253,7 +279,8 @@ export function AgentBar({
         <form onSubmit={submit} className="mt-3.5">
           <div
             className="glass flex items-center gap-3"
-            style={{ padding: "12px 16px", borderRadius: 14 }}
+            style={{ padding: "12px 16px", borderRadius: 14, cursor: "text" }}
+            onClick={focusInput}
           >
             <span
               className="inline-flex items-center justify-center text-white"
@@ -369,6 +396,22 @@ export function AgentBar({
                     </option>
                   ))}
                 </select>
+                {agent.messages.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={agent.clear}
+                    className="t-mono text-fg-soft hover:text-fg"
+                    style={{
+                      background: "transparent",
+                      border: 0,
+                      fontSize: 11,
+                      cursor: "pointer",
+                    }}
+                    title="Clear conversation"
+                  >
+                    clear
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setExpanded(false)}
@@ -392,7 +435,8 @@ export function AgentBar({
               <form onSubmit={submit} className="mt-3.5">
                 <div
                   className="glass flex items-center gap-3"
-                  style={{ padding: "12px 16px", borderRadius: 14 }}
+                  style={{ padding: "12px 16px", borderRadius: 14, cursor: "text" }}
+                  onClick={focusInput}
                 >
                   {inputField}
                   {agent.busy ? (
@@ -431,7 +475,9 @@ export function AgentBar({
             borderRadius: 18,
             boxShadow:
               "0 18px 40px -20px oklch(0.20 0.02 260 / 0.35), 0 2px 8px -2px oklch(0.20 0.02 260 / 0.10)",
+            cursor: "text",
           }}
+          onClick={focusInput}
         >
           <div className="agent-bar">
             <span

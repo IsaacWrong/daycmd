@@ -39,6 +39,8 @@ export function useFocusMode(): [boolean, () => void, (v: boolean) => void] {
   return [focus, () => setFocus((v) => !v), setFocus];
 }
 
+const TOD_CLASSES: Tod[] = ["dawn", "morning", "noon", "afternoon", "dusk", "night", "deep"];
+
 export function TodFrame({
   tod,
   focus,
@@ -48,6 +50,11 @@ export function TodFrame({
   focus: boolean;
   children: React.ReactNode;
 }) {
+  useEffect(() => {
+    const root = document.documentElement;
+    for (const t of TOD_CLASSES) root.classList.remove(`tod-${t}`);
+    root.classList.add(`tod-${tod}`);
+  }, [tod]);
   return (
     <div className={`daycmd-frame tod-${tod}${focus ? " focus" : ""}`}>
       <div className="orb orb-a" />
