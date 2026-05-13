@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Bypass zod validation in src/lib/config.ts during build — never used at build time
+      # but the schema currently requires VAULT_PATH to be a non-empty string.
+      VAULT_PATH: /tmp/ci-vault
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: mkdir -p $VAULT_PATH
+      - run: npm ci
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Build
+        run: npm run build
