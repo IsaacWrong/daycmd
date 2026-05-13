@@ -1,90 +1,164 @@
+<div align="center">
+
 # AI OS
 
-Personal command center that opens as a new-tab page. Local Next.js app. Aggregates inbox, calendar, tasks, notes, GitHub, and side-project state, and puts a tool-using Claude agent in front of all of it.
+**A local-first, agent-driven new-tab page for people juggling a vault, a job, and three side projects.**
 
-Single user. Local-only. Built for me, not for production.
+Opens with your browser. Knows your day. Routes the work through Claude.
+
+<!-- Replace with a 30-second screen recording or hero gif. -->
+<!-- ![AI OS — hero](docs/hero.gif) -->
+
+</div>
+
+---
+
+## What it is
+
+A single Next.js app that runs on `localhost`, reads your Obsidian vault, your Gmail, your Calendar, your GitHub, and your Anthropic spend, and gives you one page that opens with the browser every morning. A Claude agent sits in the dock. Skills (`⌘1`–`⌘6`) trigger triage / brief / plan / lint / review flows. Focus mode dims everything except the work in front of you. The background gradient shifts with the hour.
+
+It is not Notion. It is not a workspace. It is a calm command center — read this, do this, talk to Claude about it.
 
 ## What it does
 
-### Dashboard cards
-- **Now / Next** — current + next calendar block, with countdown
-- **Tasks** — Obsidian Tasks plugin parser (📅 due, 🛫 start, ⏫ priority, 🔁 recurrence); inline check-off writes back to the vault
-- **Daily Note** — debounced editor (600ms) bound to `<vault>/Daily/YYYY-MM-DD.md`; external Obsidian edits picked up on poll
-- **Calendar** — all calendars (primary, shared, subscribed, secondary), next 24h
-- **Gmail** — inbox triage feed
-- **GitHub** — review-requested PRs, your open PRs, assigned issues, unread notifications
-- **Projects** — vault-backed project pages with last commit + weekly commit count + open PR count per linked repo; drop-in idea capture appends to each project's note
-- **Knowledge** — recent compiled wiki pages + output deliverables per category
-- **Errors** — recent agent/tool errors with sparkline
-- **Weather badge** — geolocation → reverse-geocode (BigDataCloud) → Open-Meteo; refreshes every 15 min
-- **Usage strip** — today's + 7-day Claude token totals, cost estimate, hard daily budget cap
+**Home · Almanac**
+- Time-of-day palette: dawn → morning → noon → afternoon → dusk → night → deep. CSS variables, no JS animation, recomputed every 10 min.
+- **Focus tile** — pomodoro w/ persisted state. 4th completion appends to today's daily note.
+- **Today in numbers** — spend / tokens / tasks closed / commits / GitHub open / note words. Each w/ inline sparkline.
+- **Streaks** — daily-note + ship streak, walked from vault + commit history.
+- **Heatmap** — last 14 days of commits across every repo you push to (events feed + vault repos, deduped by sha).
+- **Now hero + day strip** — current calendar block + an absolutely-positioned timeline w/ now-marker punch-through.
+- **Tasks** — Obsidian Tasks plugin parser (`📅 due`, `🛫 start`, `⏫ priority`, `🔁 recurrence`); inline check-off writes back to the vault. Bucketed Overdue / Today / Upcoming / Someday.
+- **Daily note** — read-only preview on home; "Continue writing" opens a focused glass-modal editor w/ autosave + ⌘S + mtime conflict handling.
+- **Right streams** — Calendar (Today/Tomorrow/Later subheaders), Inbox, GitHub PRs, Knowledge w/ drift + run, Errors w/ ✓ dismiss.
+- **Agent dock** — bottom-fixed wide bar w/ ⌘J drawer + skill hotkeys.
 
-### Agent panel
-- Streaming Claude Opus 4.7 (per-skill override to Sonnet 4.6 / Haiku)
-- Per-category threads (Personal, Research, Sales, project names, …) — each category has its own message history + container + raw/ log
-- **Drag-drop / paste / picker** for attachments — images, PDFs, text files all routed to proper Anthropic content blocks
-- **⌘J drawer** — expand chat to right-side drawer, Esc to close
-- **Stop** button mid-stream — abort in-flight runs
-- Skill quick-buttons (sidebar): Morning Brief, Triage Inbox, Plan Today, Weekly Review, Quick Capture Route, Stale Tasks Sweep, Reflect, LinkedIn Post, etc.
-- Live category refresh — picks up new categories on focus / visibility / 60s
+**Project view (`/projects/[name]`)**
+- Breadcrumb masthead.
+- Hero stats row: MRR / subscribers / DAU / retention / crash-free / week hours. Stripe + analytics endpoints mocked behind real routes — wire to your account when ready.
+- Project-scoped tasks, GitHub (PRs / commits / CI status), activity log.
+- Right column = agent workspace. Per-project category, skill strip scoped to the project.
 
-### Tools the agent has
-- **Obsidian:** `get_tasks`, `task_create`, `task_done`, `append_to_daily_note`, `read_past_daily_notes`
-- **Gmail:** `get_inbox`, `gmail_get_message`, `gmail_archive`, `gmail_mark_read`, `gmail_star`, `gmail_trash`, `gmail_draft_reply`, `gmail_create_draft`, `gmail_send`, `gmail_unsubscribe` (RFC 2369/8058 List-Unsubscribe, requires confirmation)
-- **Calendar:** `get_calendar`, `calendar_create_event`, `calendar_reschedule_event`
-- **GitHub:** `get_github_summary`
-- **Knowledge base:** `kb_query`, `kb_read_wiki_page`, `kb_grep`, `kb_list_outputs`, `kb_ingest`, `kb_write_output`
-- **Web:** server-hosted `web_search` + `web_fetch`
+**Agent**
+- Streaming Claude Opus 4.7 (per-skill override to Sonnet 4.6 / Haiku).
+- Per-category threads — each gets its own message history + container + raw/ log.
+- Drag/paste/picker for image, PDF, text attachments.
+- ⌘J drawer to expand. Stop button mid-stream.
+- Tools: Obsidian read/write, Gmail (read/archive/draft/send/unsubscribe), Calendar (read/create/reschedule), GitHub summary, KB query/grep/ingest/write, web search/fetch.
 
-### Knowledge base (Karpathy 3-tier)
-Per category, the vault holds:
-- `raw/` — every agent run auto-logged (prompt + output + tool trace)
-- `wiki/` — compiled INDEX + concept + people + source pages (compile is a separate user-triggered pass; lints for broken wikilinks, missing frontmatter raws, filename-mirror drift)
-- `output/` — polished deliverables the agent wrote
+**Knowledge base (Karpathy 3-tier)**
+Per category:
+- `raw/` — every agent run auto-logged (prompt + output + tool trace).
+- `wiki/` — compiled INDEX + concept + people + source pages.
+- `output/` — polished deliverables.
 
-### Automations
-- Cron-scheduled agent runs (`node-cron`) — define in DB, scheduler boots via `instrumentation.ts`, reloads on create/update/delete
-- Status + recent runs + cost per automation
+Compile + lint run automatically:
+- **Cron · 06:00 daily** — compile per category.
+- **Cron · 06:30 daily** — lint per category.
+- **Dashboard mount** — stale sweep: any category with drift and last compile > 6h triggers compile → lint chain.
+- **Manual** — `run` button per category in the Knowledge section.
 
-## Stack
+Lint findings flow into the Errors section + mirror to `Errors/{date}.md` in the vault.
 
-Next.js 16 · React 19 · TypeScript · Tailwind v4 · SQLite (`better-sqlite3`) · `@anthropic-ai/sdk` · `googleapis` · `octokit` · `node-cron` · `gray-matter` · `date-fns` · `zod`
+**Errors**
+- DB + vault dual-write (cross-device durable via Obsidian Sync).
+- ✓ dismiss per row.
+- `POST /api/errors/backfill` rebuilds the vault log from DB.
 
-## Setup
+**Automations**
+- `node-cron` scheduler, persisted in SQLite, reloads on edit.
+- Default KB compile + lint rows seeded on first boot, one per category.
+- Custom agent automations supported via DB (UI pending).
+
+**Settings**
+- Daily Anthropic spend cap. Warn at configurable %. Hard-block past cap.
+- Default agent category.
+- Google OAuth connect/disconnect.
+
+## Why it might be for you
+
+- You live in Obsidian and want the vault to stay canonical.
+- You have multiple side projects and lose track of which one needs you today.
+- You want an agent that *does the work* (triage, compile, lint, summarize), not just chats about it.
+- You'd rather see a calm document than a 4-column Bento grid of widgets.
+- You're fine running a local Next.js server. You bring your own Anthropic key.
+
+## Why it might not be for you
+
+- You're on mobile only — this is browser-tab-on-desktop.
+- You don't use Obsidian or a markdown vault — every feature reads/writes files on disk.
+- You want multi-user / multi-device sync out of the box — this is solo, vault-via-Obsidian-Sync.
+- You want a polished SaaS — this is open-source you'll occasionally have to debug.
+
+## Quickstart
 
 ```bash
 git clone https://github.com/IsaacWrong/ai-os.git
 cd ai-os
 npm install
 cp .env.local.example .env.local
-# fill in VAULT_PATH (required), plus GITHUB_TOKEN / GOOGLE_* / ANTHROPIC_API_KEY as desired
+# minimum: VAULT_PATH + ANTHROPIC_API_KEY
 npm run dev
 ```
 
-Open `http://localhost:3000`. Pin as new-tab page.
+Open `http://localhost:3000`. Pin as your new-tab page.
 
-### Required env
-- `VAULT_PATH` — absolute path to your Obsidian vault. Tasks read from `<VAULT_PATH>/Tasks/*.md`. Daily note at `<VAULT_PATH>/Daily/YYYY-MM-DD.md`. Categories at `<VAULT_PATH>/Categories/<Name>/{raw,wiki,output}/`.
+> **Don't have an Obsidian vault?** Point `VAULT_PATH` at `examples/sample-vault/` (coming soon) to demo without setting one up.
 
-### Optional env (each feed degrades gracefully)
-- `GITHUB_TOKEN` — classic PAT, scopes `repo`, `notifications`, `read:user`
-- `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` — OAuth web client, redirect `http://localhost:3000/api/auth/google/callback`. Click "Connect Google" in the UI to authorize.
-- `ANTHROPIC_API_KEY` — required for the agent panel + automations
+### Required
+
+| Env | Purpose |
+|---|---|
+| `VAULT_PATH` | Absolute path to your Obsidian vault. Tasks read from `<VAULT_PATH>/Tasks/*.md`; daily notes from `<VAULT_PATH>/Daily/YYYY-MM-DD.md`; KB categories at `<VAULT_PATH>/Categories/<Name>/{raw,wiki,output}/`. |
+| `ANTHROPIC_API_KEY` | Required for agent, skills, KB compile/lint. |
+
+### Optional (each feed degrades gracefully when absent)
+
+| Env | Purpose |
+|---|---|
+| `GITHUB_TOKEN` | Classic PAT w/ scopes `repo`, `notifications`, `read:user`. Powers GitHub section, ship streak, heatmap. |
+| `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | OAuth web client. Redirect URI `http://localhost:3000/api/auth/google/callback`. Click *Connect Google* in `/settings` to authorize Gmail + Calendar. |
+
+## Stack
+
+Next.js 16 · React 19 · TypeScript · Tailwind v4 (`@theme inline` design tokens) · SQLite via `better-sqlite3` · `@anthropic-ai/sdk` · `googleapis` · `octokit` · `node-cron` · `gray-matter` · `date-fns` · `zod`.
 
 ## Architecture notes
 
-- All feeds use direct API libs (not MCP) for daemon-style reads
-- OAuth tokens, automations, runs, usage, settings persist in `data/ai-os.db` (gitignored)
-- Vault writes use atomic temp-file + rename to survive concurrent Obsidian edits
-- Daily note edits debounce-save every 600ms; external edits picked up on next poll (30s)
-- Tasks plugin format respected: `- [ ]` checkboxes with `📅 YYYY-MM-DD` due, `🛫` start, `⏳` scheduled, `✅` done, `❌` cancelled, `⏫`/`🔼`/`🔽` priority, `🔁` recurrence
-- Hard daily budget cap blocks new agent runs once exceeded (raise in Settings)
-- All input passes through `zod` schemas at API boundaries
+- **Vault-as-truth.** All notes, tasks, daily entries, KB pages, and lint output live as markdown in the vault. Open them in Obsidian, edit them in Vim, sync via Obsidian Sync or git. AI OS reads + writes through plain `fs`.
+- **SQLite is a fast cache.** `data/ai-os.db` holds OAuth tokens, usage rows, automations, error log, agent threads. Gitignored. Errors are also mirrored to `Errors/{date}.md` in the vault for cross-device durability.
+- **Time-of-day palette via CSS vars.** `.tod-*` classes on `.aios-frame` swap `--bg-a`, `--fg`, `--rule`, `--glass`, orb colors, etc. No `dark:` Tailwind variants anywhere.
+- **OKLCH-relative colors throughout** (`oklch(from var(--fg) l c h / 0.1)`). Tailwind v4 + modern browsers.
+- **Scheduler boots from `instrumentation.ts`.** Default KB compile + lint rows are seeded per category on first run (idempotent). Stale-sweep endpoint at `POST /api/kb/auto-compile`.
+- **All input validated through `zod` schemas at API boundaries.**
+- **Daily-note ensure**: `GET /api/obsidian/daily` lazily renders today's note from your `.obsidian/daily-notes.json` template if missing. Moment-style tokens (`{{date:dddd}}` etc.) are mapped to date-fns.
 
-## Why
+## Roadmap (rough, in priority order)
 
-Most "AI dashboards" assume you live inside their app. I live inside Obsidian, Gmail, Calendar, and GitHub. AI OS reaches into those — read and write — and gives me a single page that opens with my browser.
+- Sample vault bundle for zero-setup demo
+- First-run setup wizard (no env-file editing)
+- macOS launchd job so 06:00 compile/lint survives sleep
+- Automations management page
+- Idea capture modal (⌘K)
+- Real Stripe + Analytics OAuth for project hero stats
+- In-app PR / issue drawer
+
+## Safety / cost
+
+- The agent has tools that **write to your vault, send email, archive Gmail messages, and create calendar events.** Back up your vault. Set a budget cap in `/settings` before the first long-running skill.
+- Hard daily cap blocks new agent runs once exceeded. Default `$0` = unlimited; set one.
+- Anthropic key, GitHub PAT, Google tokens all stay local (env file + SQLite). Nothing leaves your machine except the API calls themselves.
+
+## Contributing
+
+Pre-1.0. Issues and PRs welcome — keep them small and focused. See `CONTRIBUTING.md` (TODO).
 
 ## License
 
-No license. Personal project. Fork freely; expect no support.
+MIT. See `LICENSE`.
+
+## Acknowledgements
+
+- Design language inspired by editorial calm + Raycast's command-bar UX.
+- KB three-tier (`raw/wiki/output`) shape is a riff on Andrej Karpathy's notes-on-notes post.
+- Obsidian + Tasks plugin + Daily Notes core plugin do the heavy lifting on the vault side.
