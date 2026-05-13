@@ -103,7 +103,7 @@ npm run dev
 
 Open `http://localhost:3000`. Pin as your new-tab page.
 
-> **Don't have an Obsidian vault?** Point `VAULT_PATH` at `examples/sample-vault/` (coming soon) to demo without setting one up.
+> **Don't have an Obsidian vault?** Point `VAULT_PATH` at the bundled [`examples/sample-vault/`](examples/sample-vault/) to demo without setting one up. The agent will write into it as you use it — copy first if you want to keep the sample pristine.
 
 ### Required
 
@@ -151,7 +151,7 @@ Next.js 16 · React 19 · TypeScript · Tailwind v4 (`@theme inline` design toke
 
 ## Contributing
 
-Pre-1.0. Issues and PRs welcome — keep them small and focused. See `CONTRIBUTING.md` (TODO).
+Pre-1.0. Issues and PRs welcome — keep them small and focused. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setup, patterns, and conventions.
 
 ## License
 
