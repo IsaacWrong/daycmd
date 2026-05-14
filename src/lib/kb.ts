@@ -8,15 +8,16 @@ import {
   CATEGORY_SCHEMAS,
   defaultCategories,
 } from "./kb-schemas";
+import { safeJoin, safeVaultJoin } from "./vault-path";
 
 const KB_ROOT_NAME = "Categories";
 
 export function kbRoot(): string {
-  return path.join(env.VAULT_PATH, KB_ROOT_NAME);
+  return safeVaultJoin(KB_ROOT_NAME);
 }
 
 export function categoryPath(category: string): string {
-  return path.join(kbRoot(), category);
+  return safeJoin(kbRoot(), category);
 }
 
 async function ensureDir(p: string): Promise<void> {
@@ -278,7 +279,7 @@ export async function readWikiPage(
   category: string,
   relPath: string,
 ): Promise<string> {
-  const full = path.join(categoryPath(category), "wiki", relPath);
+  const full = safeJoin(categoryPath(category), "wiki", relPath);
   return fs.readFile(full, "utf8");
 }
 
@@ -405,7 +406,7 @@ export async function wikiWrite(
   relPath: string,
   content: string,
 ): Promise<{ path: string }> {
-  const full = path.join(categoryPath(category), "wiki", relPath);
+  const full = safeJoin(categoryPath(category), "wiki", relPath);
   await fs.mkdir(path.dirname(full), { recursive: true });
   await fs.writeFile(full, content, "utf8");
   return { path: path.relative(env.VAULT_PATH, full) };
@@ -415,7 +416,7 @@ export async function wikiDelete(
   category: string,
   relPath: string,
 ): Promise<void> {
-  const full = path.join(categoryPath(category), "wiki", relPath);
+  const full = safeJoin(categoryPath(category), "wiki", relPath);
   await fs.unlink(full);
 }
 

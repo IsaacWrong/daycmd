@@ -776,7 +776,7 @@ export async function upsertReplyDraft(input: {
     : `Re: ${origSubject}`;
   const references = existingRefs ? `${existingRefs} ${messageId}` : messageId;
 
-  let to = replyTo;
+  const to = replyTo;
   let cc = "";
   if (input.replyAll) {
     const others = [origTo, origCc]
@@ -902,7 +902,7 @@ export async function sendReply(input: {
     ? `${existingRefs} ${messageId}`
     : messageId;
 
-  let to = replyTo;
+  const to = replyTo;
   let cc = "";
   if (input.replyAll) {
     const others = [origTo, origCc]

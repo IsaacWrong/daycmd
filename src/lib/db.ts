@@ -34,7 +34,6 @@ if (!fs.existsSync(DB_PATH)) {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __daycmd_db: Database.Database | undefined;
 }
 

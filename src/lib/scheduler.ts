@@ -2,7 +2,6 @@ import cron, { type ScheduledTask } from "node-cron";
 import { ensureDefaultKbAutomations, listAutomations, runAutomation } from "./automations";
 
 declare global {
-  // eslint-disable-next-line no-var
   var __daycmd_scheduler: {
     tasks: Map<number, { task: ScheduledTask; cron: string }>;
     started: boolean;

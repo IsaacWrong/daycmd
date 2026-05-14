@@ -18,14 +18,16 @@ Open `http://localhost:3000`. The dashboard reloads on file save. The scheduler 
 
 ## Before you open a PR
 
-Run both, both should pass:
+Run all four, each should pass:
 
 ```bash
 npx tsc --noEmit          # typecheck
+npm run lint              # eslint (next/core-web-vitals + next/typescript)
+npm test                  # vitest
 npm run build             # production build
 ```
 
-There is no eslint config yet — TypeScript strictness is the only static gate. If you add one, please make it a separate PR.
+The lint baseline is intentionally permissive — several React 19 hook rules (`react-hooks/set-state-in-effect`, `react-hooks/purity`, `react-hooks/refs`) are downgraded to warnings because the codebase has a handful of legit external-state-sync patterns that will be refactored incrementally. Tighten in focused follow-up PRs rather than bundling rule changes with feature work.
 
 ## Commit style
 

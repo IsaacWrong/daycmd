@@ -4,10 +4,11 @@ import { format } from "date-fns";
 import { env } from "./config";
 import { parseTasks, sortTasks, type ObsidianTask } from "./tasks-parser";
 import { renderTemplate } from "./template-tokens";
+import { safeJoin, safeVaultJoin } from "./vault-path";
 
 const VAULT = env.VAULT_PATH;
-const TASKS_DIR = path.join(VAULT, "Tasks");
-const DAILY_DIR = path.join(VAULT, "Daily");
+const TASKS_DIR = safeVaultJoin("Tasks");
+const DAILY_DIR = safeVaultJoin("Daily");
 
 async function readDailyNoteConfig(): Promise<{
   folder: string;
@@ -101,8 +102,8 @@ export async function ensureDailyNote(date = new Date()): Promise<{
   let body = "";
   if (cfg.template) {
     const templateRel = cfg.template.endsWith(".md") ? cfg.template : `${cfg.template}.md`;
-    const templatePath = path.join(VAULT, templateRel);
     try {
+      const templatePath = safeJoin(VAULT, templateRel);
       const tpl = await fs.readFile(templatePath, "utf8");
       body = renderTemplate(tpl, date, { title: format(date, "yyyy-MM-dd") });
     } catch {

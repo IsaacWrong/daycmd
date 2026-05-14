@@ -78,7 +78,7 @@ Knowledge base (Karpathy 3-tier per category):
 - The wiki is compiled by a separate user-triggered pass. Don't try to write to wiki/ directly.`;
 
 const DEFAULT_MODEL = "claude-opus-4-7";
-const DEFAULT_EFFORT: "high" = "high";
+const DEFAULT_EFFORT = "high" as const;
 const DEFAULT_MAX_TOKENS = 16000;
 type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 

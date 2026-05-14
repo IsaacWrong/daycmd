@@ -105,14 +105,17 @@ Daycmd's agent has tools that **write to your Obsidian vault, send / archive Gma
 git clone https://github.com/IsaacWrong/daycmd.git
 cd daycmd
 npm install
-cp .env.local.example .env.local
-# minimum: VAULT_PATH + ANTHROPIC_API_KEY
+echo 'VAULT_PATH="'"$PWD"'/examples/sample-vault"' > .env.local
 npm run dev
 ```
 
-Open `http://localhost:3000`. Pin as your new-tab page.
+Open `http://localhost:3000/setup`. The first-run wizard writes the rest of your keys to `.env.local`, validates the vault path, and links you to the dashboard. Restart `npm run dev` after saving — Next caches `process.env` at boot.
 
-> **Don't have an Obsidian vault?** Point `VAULT_PATH` at the bundled [`examples/sample-vault/`](examples/sample-vault/) to demo without setting one up. The agent will write into it as you use it — copy first if you want to keep the sample pristine.
+Once `/setup` shows **ready**, open `http://localhost:3000` and pin as your new-tab page.
+
+> **Prefer to edit by hand?** `cp .env.local.example .env.local` and fill in `VAULT_PATH` + `ANTHROPIC_API_KEY` at minimum.
+>
+> **Don't have an Obsidian vault?** The bundled [`examples/sample-vault/`](examples/sample-vault/) is the safest starting point. The agent will write into it as you use it — copy first if you want to keep the sample pristine.
 
 ### Required
 
@@ -144,8 +147,6 @@ Next.js 16 · React 19 · TypeScript · Tailwind v4 (`@theme inline` design toke
 
 ## Roadmap (rough, in priority order)
 
-- Sample vault bundle for zero-setup demo
-- First-run setup wizard (no env-file editing)
 - macOS launchd job so 06:00 compile/lint survives sleep
 - Automations management page
 - Idea capture modal (⌘K)

@@ -2,8 +2,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { format } from "date-fns";
 import { env } from "./config";
+import { safeJoin, safeVaultJoin } from "./vault-path";
 
-const TASKS_DIR = () => path.join(env.VAULT_PATH, "Tasks");
+const TASKS_DIR = () => safeVaultJoin("Tasks");
 
 const PRIORITY_GLYPH: Record<string, string> = {
   highest: "🔺",
@@ -15,11 +16,16 @@ const PRIORITY_GLYPH: Record<string, string> = {
 
 function resolveTaskFile(file: string): string {
   const normalized = file.replace(/\.md$/, "") + ".md";
-  if (path.isAbsolute(normalized)) return normalized;
-  if (normalized.startsWith(`Tasks${path.sep}`) || normalized.startsWith("Tasks/")) {
-    return path.join(env.VAULT_PATH, normalized);
+  // Strip any absolute or vault-prefixed input down to a vault-relative segment,
+  // then validate it stays inside Tasks/ (default) or inside the vault.
+  if (path.isAbsolute(normalized)) {
+    const rel = path.relative(env.VAULT_PATH, normalized);
+    return safeVaultJoin(rel);
   }
-  return path.join(TASKS_DIR(), normalized);
+  if (normalized.startsWith(`Tasks${path.sep}`) || normalized.startsWith("Tasks/")) {
+    return safeVaultJoin(normalized);
+  }
+  return safeJoin(TASKS_DIR(), normalized);
 }
 
 export async function appendTask(input: {
@@ -31,7 +37,7 @@ export async function appendTask(input: {
   priority?: "highest" | "high" | "medium" | "low" | "lowest";
 }): Promise<{ path: string; line: number }> {
   const filename = (input.file ?? "Inbox").replace(/\.md$/, "") + ".md";
-  const filePath = path.join(TASKS_DIR(), filename);
+  const filePath = safeJoin(TASKS_DIR(), filename);
   await fs.mkdir(TASKS_DIR(), { recursive: true });
 
   let body = "";
