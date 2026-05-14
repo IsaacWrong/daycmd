@@ -8,9 +8,8 @@ export async function PATCH(
   req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const { id: raw } = await ctx.params;
-  const id = Number(raw);
-  if (!Number.isFinite(id)) {
+  const { id } = await ctx.params;
+  if (!id) {
     return NextResponse.json({ error: "invalid id" }, { status: 400 });
   }
   const body = (await req.json().catch(() => ({}))) as { resolved?: boolean };

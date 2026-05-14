@@ -381,13 +381,13 @@ function KnowledgeSection() {
 
 function ErrorsSection() {
   const { data, refresh } = usePoll<{ errors: ErrorRow[] }>("/api/errors", 60_000);
-  const [busy, setBusy] = useState<number | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const errs = (data?.errors ?? []).slice(0, 4);
 
-  async function resolve(id: number) {
+  async function resolve(id: string) {
     setBusy(id);
     try {
-      await fetch(`/api/errors/${id}`, {
+      await fetch(`/api/errors/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ resolved: true }),

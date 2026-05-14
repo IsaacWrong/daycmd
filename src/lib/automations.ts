@@ -6,7 +6,13 @@ import { runAgentOnce, type UsageTotals } from "./agent";
 import { streamCompile } from "./kb-compile";
 import { streamLint } from "./kb-lint";
 import { logError } from "./errors";
-import { readStateSync, writeStateSync } from "./vault-state";
+import {
+  readStateSync,
+  writeStateSync,
+  appendLog,
+  readAllLogs,
+  getDeviceId,
+} from "./vault-state";
 import { env } from "./config";
 
 export type AutomationKind = "agent" | "compile" | "lint";
@@ -175,10 +181,8 @@ export function deleteAutomation(id: number): void {
   const all = loadAll();
   const next = all.filter((a) => a.id !== id);
   if (next.length !== all.length) saveAll(next);
-  // Also clear local run history for this automation so the orphans don't pile up.
-  try {
-    db.prepare("DELETE FROM automation_runs WHERE automation_id = ?").run(id);
-  } catch {}
+  // Local run history left in place; rows become orphans referenced only by
+  // their numeric automation_id. Cheap to ignore on read.
 }
 
 function setLastRunAt(id: number, ts: number): void {
@@ -191,7 +195,7 @@ function setLastRunAt(id: number, ts: number): void {
 }
 
 export type AutomationRun = {
-  id: number;
+  id: string;
   automation_id: number;
   started_at: number;
   ended_at: number | null;
@@ -204,22 +208,54 @@ export type AutomationRun = {
   cache_write_tokens: number;
 };
 
+const RUNS_TABLE = "automation_runs";
+
+type StoredRun = Omit<AutomationRun, "id">;
+
+let _runsMigrated = false;
+function migrateRunsFromDb(): void {
+  if (_runsMigrated) return;
+  _runsMigrated = true;
+  let rows: Array<StoredRun & { id: number }> = [];
+  try {
+    rows = db
+      .prepare(
+        "SELECT id, automation_id, started_at, ended_at, ok, output, error, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM automation_runs ORDER BY started_at ASC",
+      )
+      .all() as Array<StoredRun & { id: number }>;
+  } catch {
+    return;
+  }
+  if (rows.length === 0) return;
+  for (const r of rows) {
+    const { id: _id, ...rest } = r;
+    appendLog(RUNS_TABLE, rest);
+  }
+  try {
+    db.prepare("DELETE FROM automation_runs").run();
+  } catch {}
+}
+
+function loadRuns(): AutomationRun[] {
+  migrateRunsFromDb();
+  return readAllLogs<StoredRun>(RUNS_TABLE).map((r) => ({
+    ...r,
+    id: `${r._device}:${r.started_at}`,
+  }));
+}
+
 export function listRuns(automationId: number, limit = 5): AutomationRun[] {
-  return db
-    .prepare(
-      "SELECT * FROM automation_runs WHERE automation_id = ? ORDER BY started_at DESC LIMIT ?",
-    )
-    .all(automationId, limit) as AutomationRun[];
+  return loadRuns()
+    .filter((r) => r.automation_id === automationId)
+    .sort((a, b) => b.started_at - a.started_at)
+    .slice(0, limit);
 }
 
 export function listRecentRuns(limit = 10): (AutomationRun & { name: string })[] {
-  const rows = db
-    .prepare(
-      "SELECT * FROM automation_runs ORDER BY started_at DESC LIMIT ?",
-    )
-    .all(limit) as AutomationRun[];
-  const all = loadAll();
-  const nameById = new Map(all.map((a) => [a.id, a.name]));
+  const rows = loadRuns()
+    .sort((a, b) => b.started_at - a.started_at)
+    .slice(0, limit);
+  const nameById = new Map(loadAll().map((a) => [a.id, a.name]));
   return rows.map((r) => ({ ...r, name: nameById.get(r.automation_id) ?? `#${r.automation_id}` }));
 }
 
@@ -228,12 +264,18 @@ export async function runAutomation(id: number): Promise<AutomationRun> {
   if (!a) throw new Error("automation not found");
 
   const startedAt = Date.now();
-  const runInfo = db
-    .prepare(
-      "INSERT INTO automation_runs (automation_id, started_at) VALUES (?, ?)",
-    )
-    .run(id, startedAt);
-  const runId = Number(runInfo.lastInsertRowid);
+  const finalRecord: StoredRun = {
+    automation_id: id,
+    started_at: startedAt,
+    ended_at: null,
+    ok: null,
+    output: null,
+    error: null,
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_tokens: 0,
+    cache_write_tokens: 0,
+  };
 
   try {
     let result: {
@@ -283,32 +325,24 @@ export async function runAutomation(id: number): Promise<AutomationRun> {
       result = await runAgentOnce(a.prompt, { source: `auto:${a.name}` });
     }
     const endedAt = Date.now();
-    db.prepare(
-      `UPDATE automation_runs SET ended_at = ?, ok = ?, output = ?, error = ?,
-        input_tokens = ?, output_tokens = ?, cache_read_tokens = ?, cache_write_tokens = ?
-       WHERE id = ?`,
-    ).run(
-      endedAt,
-      result.ok ? 1 : 0,
-      result.output.slice(0, 20000),
-      result.error ?? null,
-      result.usage.input_tokens,
-      result.usage.output_tokens,
-      result.usage.cache_read_tokens,
-      result.usage.cache_write_tokens,
-      runId,
-    );
+    finalRecord.ended_at = endedAt;
+    finalRecord.ok = result.ok ? 1 : 0;
+    finalRecord.output = result.output.slice(0, 20000);
+    finalRecord.error = result.error ?? null;
+    finalRecord.input_tokens = result.usage.input_tokens;
+    finalRecord.output_tokens = result.usage.output_tokens;
+    finalRecord.cache_read_tokens = result.usage.cache_read_tokens;
+    finalRecord.cache_write_tokens = result.usage.cache_write_tokens;
     setLastRunAt(id, endedAt);
   } catch (e) {
-    db.prepare(
-      "UPDATE automation_runs SET ended_at = ?, ok = 0, error = ? WHERE id = ?",
-    ).run(Date.now(), (e as Error).message, runId);
+    finalRecord.ended_at = Date.now();
+    finalRecord.ok = 0;
+    finalRecord.error = (e as Error).message;
     logError(`automation:${a.name}`, (e as Error).message);
   }
 
-  return db
-    .prepare("SELECT * FROM automation_runs WHERE id = ?")
-    .get(runId) as AutomationRun;
+  appendLog(RUNS_TABLE, finalRecord);
+  return { ...finalRecord, id: `${getDeviceId()}:${startedAt}` };
 }
 
 // 6am daily compile, 6:30am daily lint.

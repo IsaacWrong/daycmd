@@ -1,17 +1,37 @@
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { format } from "date-fns";
 import { db } from "./db";
 import { env } from "./config";
+import {
+  appendLog,
+  readAllLogs,
+  rewriteOwnLog,
+  readStateSync,
+  writeStateSync,
+  getDeviceId,
+} from "./vault-state";
 
 export type ErrorRow = {
-  id: number;
+  id: string;
   ts: number;
   source: string;
   message: string;
   context: string | null;
   resolved_at: number | null;
 };
+
+type StoredError = {
+  id: string;
+  ts: number;
+  source: string;
+  message: string;
+  context: string | null;
+};
+
+const TABLE = "error_log";
+const RESOLUTIONS_KEY = "error-resolutions";
 
 const ERRORS_DIR = path.join(env.VAULT_PATH, "Errors");
 
@@ -45,17 +65,77 @@ function vaultAppend(ts: number, source: string, message: string, context?: unkn
   }
 }
 
+let _migrated = false;
+function migrateFromDb(): void {
+  if (_migrated) return;
+  _migrated = true;
+  type DbRow = {
+    id: number;
+    ts: number;
+    source: string;
+    message: string;
+    context: string | null;
+    resolved_at: number | null;
+  };
+  let rows: DbRow[] = [];
+  try {
+    rows = db
+      .prepare(
+        "SELECT id, ts, source, message, context, resolved_at FROM error_log ORDER BY ts ASC",
+      )
+      .all() as DbRow[];
+  } catch {
+    return;
+  }
+  if (rows.length === 0) return;
+  const resolutions = (readStateSync<Record<string, number>>(RESOLUTIONS_KEY)) ?? {};
+  for (const r of rows) {
+    const id = randomUUID();
+    appendLog(TABLE, {
+      id,
+      ts: r.ts,
+      source: r.source,
+      message: r.message,
+      context: r.context,
+    } as StoredError);
+    if (r.resolved_at) resolutions[id] = r.resolved_at;
+  }
+  try {
+    writeStateSync(RESOLUTIONS_KEY, resolutions);
+  } catch {}
+  try {
+    db.prepare("DELETE FROM error_log").run();
+  } catch {}
+}
+
+function loadResolutions(): Record<string, number> {
+  return (readStateSync<Record<string, number>>(RESOLUTIONS_KEY)) ?? {};
+}
+
+function loadAll(): ErrorRow[] {
+  migrateFromDb();
+  const resolutions = loadResolutions();
+  return readAllLogs<StoredError>(TABLE).map((r) => ({
+    id: r.id,
+    ts: r.ts,
+    source: r.source,
+    message: r.message,
+    context: r.context,
+    resolved_at: resolutions[r.id] ?? null,
+  }));
+}
+
 export function logError(source: string, message: string, context?: unknown): void {
   const ts = Date.now();
+  const record: StoredError = {
+    id: randomUUID(),
+    ts,
+    source,
+    message: message.slice(0, 4000),
+    context: context ? JSON.stringify(context).slice(0, 4000) : null,
+  };
   try {
-    db.prepare(
-      "INSERT INTO error_log (ts, source, message, context) VALUES (?, ?, ?, ?)",
-    ).run(
-      ts,
-      source,
-      message.slice(0, 4000),
-      context ? JSON.stringify(context).slice(0, 4000) : null,
-    );
+    appendLog(TABLE, record);
   } catch {
     // never throw from logger
   }
@@ -63,47 +143,43 @@ export function logError(source: string, message: string, context?: unknown): vo
 }
 
 export function recentErrors(limit = 20, includeResolved = false): ErrorRow[] {
-  if (includeResolved) {
-    return db
-      .prepare("SELECT * FROM error_log ORDER BY ts DESC LIMIT ?")
-      .all(limit) as ErrorRow[];
-  }
-  return db
-    .prepare(
-      "SELECT * FROM error_log WHERE resolved_at IS NULL ORDER BY ts DESC LIMIT ?",
-    )
-    .all(limit) as ErrorRow[];
+  const all = loadAll().sort((a, b) => b.ts - a.ts);
+  const filtered = includeResolved ? all : all.filter((r) => r.resolved_at === null);
+  return filtered.slice(0, limit);
 }
 
-export function resolveError(id: number): boolean {
-  const info = db
-    .prepare(
-      "UPDATE error_log SET resolved_at = ? WHERE id = ? AND resolved_at IS NULL",
-    )
-    .run(Date.now(), id);
-  return info.changes > 0;
+export function resolveError(id: string): boolean {
+  const resolutions = loadResolutions();
+  if (resolutions[id]) return false;
+  resolutions[id] = Date.now();
+  writeStateSync(RESOLUTIONS_KEY, resolutions);
+  return true;
 }
 
-export function unresolveError(id: number): boolean {
-  const info = db
-    .prepare("UPDATE error_log SET resolved_at = NULL WHERE id = ?")
-    .run(id);
-  return info.changes > 0;
+export function unresolveError(id: string): boolean {
+  const resolutions = loadResolutions();
+  if (!resolutions[id]) return false;
+  delete resolutions[id];
+  writeStateSync(RESOLUTIONS_KEY, resolutions);
+  return true;
 }
 
 export function clearErrors(): void {
-  db.prepare("DELETE FROM error_log").run();
+  // Only clears this device's log; other devices still have their own copies
+  // until they sync the cleared state. Safer than nuking a shared file.
+  rewriteOwnLog<StoredError>(TABLE, () => false);
+  try {
+    writeStateSync(RESOLUTIONS_KEY, {});
+  } catch {}
 }
 
 /**
- * Rewrite every per-day Errors/{yyyy-MM-dd}.md file from the DB.
- * Overwrites existing files so the vault is an exact mirror of error_log.
+ * Rewrite every per-day Errors/{yyyy-MM-dd}.md file from the unified log.
+ * Overwrites existing files so the vault is an exact mirror of the log.
  */
 export function backfillErrorsToVault(): { files: string[]; rows: number } {
   if (!ensureDir()) return { files: [], rows: 0 };
-  const rows = db
-    .prepare("SELECT * FROM error_log ORDER BY ts ASC")
-    .all() as ErrorRow[];
+  const rows = loadAll().sort((a, b) => a.ts - b.ts);
   const byDay = new Map<string, string[]>();
   for (const r of rows) {
     const d = new Date(r.ts);
@@ -126,3 +202,7 @@ export function backfillErrorsToVault(): { files: string[]; rows: number } {
   }
   return { files, rows: rows.length };
 }
+
+// Re-exported so other modules can attribute records to the writing device
+// without pulling vault-state directly.
+export { getDeviceId };

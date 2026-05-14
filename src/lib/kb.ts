@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { env } from "./config";
 import { db } from "./db";
+import { appendLog, readAllLogs } from "./vault-state";
 import {
   GLOBAL_SCHEMA,
   CATEGORY_SCHEMAS,
@@ -109,12 +110,7 @@ export async function categoryStats(name: string): Promise<CategoryStats> {
     countFiles(path.join(root, "wiki"), true),
     countFiles(path.join(root, "output")),
   ]);
-  const lastCompile = db
-    .prepare(
-      "SELECT MAX(ended_at) AS last FROM kb_compiles WHERE category = ? AND ok = 1",
-    )
-    .get(name) as { last: number | null };
-  const lastCompileAt = lastCompile.last ?? null;
+  const lastCompileAt = lastSuccessfulCompileAt(name);
   let driftCount = 0;
   if (lastCompileAt && raw.count > 0) {
     const entries = await fs.readdir(path.join(root, "raw"));
@@ -423,12 +419,58 @@ export async function wikiDelete(
   await fs.unlink(full);
 }
 
-// Compile record helpers
+// Compile record helpers — backed by per-device NDJSON in the vault, with a
+// one-shot import of any remaining DB rows on first read.
+
+type CompileRecord = {
+  category: string;
+  started_at: number;
+  ended_at: number | null;
+  ok: number | null;
+  summary: string | null;
+  error: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+};
+
+const COMPILES_TABLE = "kb_compiles";
+
+// Track in-flight compiles only in memory. start returns the started_at
+// timestamp as the token; end writes the complete record.
+const _inflight = new Map<number, { category: string; started_at: number }>();
+
+let _compilesMigrated = false;
+function migrateCompilesFromDb(): void {
+  if (_compilesMigrated) return;
+  _compilesMigrated = true;
+  let rows: CompileRecord[] = [];
+  try {
+    rows = db
+      .prepare(
+        "SELECT category, started_at, ended_at, ok, summary, error, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM kb_compiles ORDER BY started_at ASC",
+      )
+      .all() as CompileRecord[];
+  } catch {
+    return;
+  }
+  if (rows.length === 0) return;
+  for (const r of rows) appendLog(COMPILES_TABLE, r);
+  try {
+    db.prepare("DELETE FROM kb_compiles").run();
+  } catch {}
+}
+
+function loadCompiles(): CompileRecord[] {
+  migrateCompilesFromDb();
+  return readAllLogs<CompileRecord>(COMPILES_TABLE);
+}
+
 export function recordCompileStart(category: string): number {
-  const info = db
-    .prepare("INSERT INTO kb_compiles (category, started_at) VALUES (?, ?)")
-    .run(category, Date.now());
-  return Number(info.lastInsertRowid);
+  const startedAt = Date.now();
+  _inflight.set(startedAt, { category, started_at: startedAt });
+  return startedAt;
 }
 
 export function recordCompileEnd(
@@ -445,27 +487,37 @@ export function recordCompileEnd(
     };
   },
 ): void {
-  db.prepare(
-    `UPDATE kb_compiles SET ended_at = ?, ok = ?, summary = ?, error = ?,
-      input_tokens = ?, output_tokens = ?, cache_read_tokens = ?, cache_write_tokens = ?
-     WHERE id = ?`,
-  ).run(
-    Date.now(),
-    result.ok ? 1 : 0,
-    result.summary?.slice(0, 4000) ?? null,
-    result.error ?? null,
-    result.usage.input_tokens,
-    result.usage.output_tokens,
-    result.usage.cache_read_tokens,
-    result.usage.cache_write_tokens,
-    id,
-  );
+  const meta = _inflight.get(id);
+  _inflight.delete(id);
+  const record: CompileRecord = {
+    category: meta?.category ?? "unknown",
+    started_at: meta?.started_at ?? id,
+    ended_at: Date.now(),
+    ok: result.ok ? 1 : 0,
+    summary: result.summary?.slice(0, 4000) ?? null,
+    error: result.error ?? null,
+    input_tokens: result.usage.input_tokens,
+    output_tokens: result.usage.output_tokens,
+    cache_read_tokens: result.usage.cache_read_tokens,
+    cache_write_tokens: result.usage.cache_write_tokens,
+  };
+  appendLog(COMPILES_TABLE, record);
 }
 
 export function recentCompiles(category: string, limit = 5) {
-  return db
-    .prepare(
-      "SELECT * FROM kb_compiles WHERE category = ? ORDER BY started_at DESC LIMIT ?",
-    )
-    .all(category, limit);
+  return loadCompiles()
+    .filter((c) => c.category === category)
+    .sort((a, b) => b.started_at - a.started_at)
+    .slice(0, limit);
+}
+
+function lastSuccessfulCompileAt(category: string): number | null {
+  let last: number | null = null;
+  for (const c of loadCompiles()) {
+    if (c.category !== category) continue;
+    if (c.ok !== 1) continue;
+    if (!c.ended_at) continue;
+    if (last === null || c.ended_at > last) last = c.ended_at;
+  }
+  return last;
 }
