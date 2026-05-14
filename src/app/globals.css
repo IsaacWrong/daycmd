@@ -17,20 +17,23 @@
   --fg: oklch(0.22 0.02 260);
   --fg-soft: oklch(0.45 0.02 260);
   --rule: oklch(0.22 0.02 260 / 0.10);
-  --glass: oklch(0.99 0.01 60 / 0.55);
+  --glass: oklch(0.99 0.01 60 / 0.32);
   --glass-bd: oklch(0.30 0.02 260 / 0.08);
+  --glass-hl: oklch(1 0 0 / 0.55);
+  --glass-sh: oklch(0.20 0.02 260 / 0.14);
+  --glass-text-sh: oklch(0 0 0 / 0.06);
   --orb-1: oklch(0.87 0.09 60 / 0.45);
   --orb-2: oklch(0.90 0.06 230 / 0.40);
 }
 
 /* ── Time-of-day palettes ────────────────────────────────────────── */
-.tod-dawn      { --bg-a: oklch(0.94 0.04 25);  --bg-b: oklch(0.96 0.03 60);  --fg: oklch(0.25 0.02 260); --fg-soft: oklch(0.45 0.02 260); --rule: oklch(0.22 0.02 260 / 0.10); --glass: oklch(0.99 0.01 60 / 0.55);  --glass-bd: oklch(0.30 0.02 260 / 0.08); --orb-1: oklch(0.85 0.10 25 / 0.55);  --orb-2: oklch(0.90 0.08 320 / 0.40); }
-.tod-morning   { --bg-a: oklch(0.97 0.02 220); --bg-b: oklch(0.98 0.02 60);  --fg: oklch(0.22 0.02 260); --fg-soft: oklch(0.45 0.02 260); --rule: oklch(0.22 0.02 260 / 0.10); --glass: oklch(0.99 0.01 220 / 0.55); --glass-bd: oklch(0.30 0.02 260 / 0.08); --orb-1: oklch(0.88 0.07 220 / 0.45); --orb-2: oklch(0.92 0.05 60 / 0.40); }
-.tod-noon      { --bg-a: oklch(0.97 0.03 230); --bg-b: oklch(0.99 0.01 230); --fg: oklch(0.20 0.02 260); --fg-soft: oklch(0.43 0.02 260); --rule: oklch(0.22 0.02 260 / 0.10); --glass: oklch(0.99 0.005 230 / 0.55); --glass-bd: oklch(0.30 0.02 260 / 0.08); --orb-1: oklch(0.88 0.06 230 / 0.40); --orb-2: oklch(0.92 0.04 200 / 0.35); }
-.tod-afternoon { --bg-a: oklch(0.95 0.04 60);  --bg-b: oklch(0.97 0.02 230); --fg: oklch(0.22 0.02 260); --fg-soft: oklch(0.45 0.02 260); --rule: oklch(0.22 0.02 260 / 0.10); --glass: oklch(0.99 0.01 60 / 0.55);  --glass-bd: oklch(0.30 0.02 260 / 0.08); --orb-1: oklch(0.87 0.09 60 / 0.45);  --orb-2: oklch(0.90 0.06 230 / 0.40); }
-.tod-dusk      { --bg-a: oklch(0.82 0.10 30);  --bg-b: oklch(0.78 0.09 310); --fg: oklch(0.20 0.02 280); --fg-soft: oklch(0.40 0.02 280); --rule: oklch(0.20 0.02 280 / 0.14); --glass: oklch(0.96 0.02 30 / 0.45);  --glass-bd: oklch(0.20 0.02 280 / 0.10); --orb-1: oklch(0.80 0.13 30 / 0.55);  --orb-2: oklch(0.72 0.11 310 / 0.45); }
-.tod-night     { --bg-a: oklch(0.20 0.04 260); --bg-b: oklch(0.15 0.05 280); --fg: oklch(0.94 0.01 260); --fg-soft: oklch(0.70 0.02 260); --rule: oklch(0.94 0.01 260 / 0.10); --glass: oklch(0.30 0.03 260 / 0.40);  --glass-bd: oklch(0.94 0.01 260 / 0.08); --orb-1: oklch(0.45 0.15 280 / 0.40); --orb-2: oklch(0.40 0.12 220 / 0.35); }
-.tod-deep      { --bg-a: oklch(0.13 0.03 260); --bg-b: oklch(0.10 0.02 260); --fg: oklch(0.94 0.01 260); --fg-soft: oklch(0.62 0.02 260); --rule: oklch(0.94 0.01 260 / 0.08); --glass: oklch(0.22 0.03 260 / 0.50);  --glass-bd: oklch(0.94 0.01 260 / 0.07); --orb-1: oklch(0.35 0.13 280 / 0.35); --orb-2: oklch(0.30 0.10 220 / 0.30); }
+.tod-dawn      { --bg-a: oklch(0.94 0.04 25);  --bg-b: oklch(0.96 0.03 60);  --fg: oklch(0.25 0.02 260); --fg-soft: oklch(0.45 0.02 260); --rule: oklch(0.22 0.02 260 / 0.10); --glass: oklch(0.99 0.01 60 / 0.32);  --glass-bd: oklch(0.30 0.02 260 / 0.08); --glass-hl: oklch(1 0 0 / 0.55); --glass-sh: oklch(0.20 0.02 260 / 0.14); --glass-text-sh: oklch(0 0 0 / 0.06); --orb-1: oklch(0.85 0.10 25 / 0.55);  --orb-2: oklch(0.90 0.08 320 / 0.40); }
+.tod-morning   { --bg-a: oklch(0.97 0.02 220); --bg-b: oklch(0.98 0.02 60);  --fg: oklch(0.22 0.02 260); --fg-soft: oklch(0.45 0.02 260); --rule: oklch(0.22 0.02 260 / 0.10); --glass: oklch(0.99 0.01 220 / 0.32); --glass-bd: oklch(0.30 0.02 260 / 0.08); --glass-hl: oklch(1 0 0 / 0.55); --glass-sh: oklch(0.20 0.02 260 / 0.14); --glass-text-sh: oklch(0 0 0 / 0.06); --orb-1: oklch(0.88 0.07 220 / 0.45); --orb-2: oklch(0.92 0.05 60 / 0.40); }
+.tod-noon      { --bg-a: oklch(0.97 0.03 230); --bg-b: oklch(0.99 0.01 230); --fg: oklch(0.20 0.02 260); --fg-soft: oklch(0.43 0.02 260); --rule: oklch(0.22 0.02 260 / 0.10); --glass: oklch(0.99 0.005 230 / 0.32); --glass-bd: oklch(0.30 0.02 260 / 0.08); --glass-hl: oklch(1 0 0 / 0.55); --glass-sh: oklch(0.20 0.02 260 / 0.14); --glass-text-sh: oklch(0 0 0 / 0.06); --orb-1: oklch(0.88 0.06 230 / 0.40); --orb-2: oklch(0.92 0.04 200 / 0.35); }
+.tod-afternoon { --bg-a: oklch(0.95 0.04 60);  --bg-b: oklch(0.97 0.02 230); --fg: oklch(0.22 0.02 260); --fg-soft: oklch(0.45 0.02 260); --rule: oklch(0.22 0.02 260 / 0.10); --glass: oklch(0.99 0.01 60 / 0.32);  --glass-bd: oklch(0.30 0.02 260 / 0.08); --glass-hl: oklch(1 0 0 / 0.55); --glass-sh: oklch(0.20 0.02 260 / 0.14); --glass-text-sh: oklch(0 0 0 / 0.06); --orb-1: oklch(0.87 0.09 60 / 0.45);  --orb-2: oklch(0.90 0.06 230 / 0.40); }
+.tod-dusk      { --bg-a: oklch(0.82 0.10 30);  --bg-b: oklch(0.78 0.09 310); --fg: oklch(0.20 0.02 280); --fg-soft: oklch(0.40 0.02 280); --rule: oklch(0.20 0.02 280 / 0.14); --glass: oklch(0.96 0.02 30 / 0.26);  --glass-bd: oklch(0.20 0.02 280 / 0.10); --glass-hl: oklch(1 0 0 / 0.50); --glass-sh: oklch(0.15 0.02 280 / 0.22); --glass-text-sh: oklch(0 0 0 / 0.10); --orb-1: oklch(0.80 0.13 30 / 0.55);  --orb-2: oklch(0.72 0.11 310 / 0.45); }
+.tod-night     { --bg-a: oklch(0.20 0.04 260); --bg-b: oklch(0.15 0.05 280); --fg: oklch(0.94 0.01 260); --fg-soft: oklch(0.70 0.02 260); --rule: oklch(0.94 0.01 260 / 0.10); --glass: oklch(0.30 0.03 260 / 0.26);  --glass-bd: oklch(0.94 0.01 260 / 0.10); --glass-hl: oklch(1 0 0 / 0.10); --glass-sh: oklch(0 0 0 / 0.40); --glass-text-sh: oklch(0 0 0 / 0.40); --orb-1: oklch(0.45 0.15 280 / 0.40); --orb-2: oklch(0.40 0.12 220 / 0.35); }
+.tod-deep      { --bg-a: oklch(0.13 0.03 260); --bg-b: oklch(0.10 0.02 260); --fg: oklch(0.94 0.01 260); --fg-soft: oklch(0.62 0.02 260); --rule: oklch(0.94 0.01 260 / 0.08); --glass: oklch(0.22 0.03 260 / 0.30);  --glass-bd: oklch(0.94 0.01 260 / 0.09); --glass-hl: oklch(1 0 0 / 0.08); --glass-sh: oklch(0 0 0 / 0.45); --glass-text-sh: oklch(0 0 0 / 0.45); --orb-1: oklch(0.35 0.13 280 / 0.35); --orb-2: oklch(0.30 0.10 220 / 0.30); }
 
 /* ── Tailwind v4 theme tokens ────────────────────────────────────── */
 @theme inline {
@@ -110,8 +113,13 @@ button { font-family: inherit; }
   font-size: 10px;
   font-weight: 500;
   color: var(--fg-soft);
+  text-shadow: 0 1px 1px var(--glass-text-sh);
 }
-.t-num { font-feature-settings: "tnum" 1, "ss01" 1; font-variant-numeric: tabular-nums; }
+.t-num {
+  font-feature-settings: "tnum" 1, "ss01" 1;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 1px var(--glass-text-sh);
+}
 
 /* ── Source dots ─────────────────────────────────────────────────── */
 .src-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
@@ -127,17 +135,27 @@ button { font-family: inherit; }
 /* ── Glass surfaces ──────────────────────────────────────────────── */
 .glass {
   background: var(--glass);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
   border: 1px solid var(--glass-bd);
   border-radius: 20px;
+  box-shadow:
+    inset 0 1px 0 var(--glass-hl),
+    inset 0 -1px 0 oklch(from var(--glass-hl) l c h / 0.18),
+    0 10px 28px -12px var(--glass-sh),
+    0 2px 6px -2px var(--glass-sh);
 }
 .glass-pill {
   background: var(--glass);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(32px) saturate(200%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
   border: 1px solid var(--glass-bd);
   border-radius: 999px;
+  box-shadow:
+    inset 0 1px 0 var(--glass-hl),
+    inset 0 -1px 0 oklch(from var(--glass-hl) l c h / 0.18),
+    0 8px 22px -10px var(--glass-sh),
+    0 2px 6px -2px var(--glass-sh);
 }
 
 .hr-rule { height: 1px; background: var(--rule); border: 0; margin: 0; }
@@ -484,22 +502,23 @@ button { font-family: inherit; }
 .glass-card {
   background:
     linear-gradient(180deg,
-      oklch(from var(--bg-a) l c h / 0.35) 0%,
-      oklch(from var(--bg-b) l c h / 0.30) 100%);
+      oklch(from var(--bg-a) l c h / 0.28) 0%,
+      oklch(from var(--bg-b) l c h / 0.22) 100%);
   backdrop-filter: blur(48px) saturate(200%);
   -webkit-backdrop-filter: blur(48px) saturate(200%);
-  border: 1px solid oklch(from var(--fg) l c h / 0.10);
+  border: 1px solid var(--glass-bd);
   box-shadow:
-    0 30px 80px -20px rgb(0 0 0 / 0.35),
-    inset 0 1px 0 oklch(from var(--fg) l c h / 0.06);
+    inset 0 1px 0 var(--glass-hl),
+    inset 0 -1px 0 oklch(from var(--glass-hl) l c h / 0.18),
+    0 30px 80px -20px var(--glass-sh),
+    0 6px 18px -8px var(--glass-sh);
 }
 .tod-night .glass-card,
 .tod-deep .glass-card {
   background:
     linear-gradient(180deg,
-      oklch(from var(--bg-a) l c h / 0.45) 0%,
-      oklch(from var(--bg-b) l c h / 0.30) 100%);
-  border-color: oklch(from var(--fg) l c h / 0.14);
+      oklch(from var(--bg-a) l c h / 0.40) 0%,
+      oklch(from var(--bg-b) l c h / 0.28) 100%);
 }
 
 /* ── Mail labels ───────────────────────────────────────────────── */
