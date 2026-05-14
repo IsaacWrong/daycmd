@@ -105,6 +105,8 @@ export default function Home() {
           style={{
             pointerEvents: "auto",
             width: "100%",
+            maxWidth: agentOpen ? "70%" : "100%",
+            alignSelf: agentOpen ? "center" : "stretch",
             display: "flex",
             flexDirection: "column",
             flex: agentOpen ? "1 1 auto" : "0 0 auto",
