@@ -9,7 +9,7 @@ import {
 } from "@/lib/timer";
 
 export function ProjectTimer({ name }: { name: string }) {
-  const { state, start } = useActiveTimer();
+  const { state, hydrated, start } = useActiveTimer();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -19,6 +19,7 @@ export function ProjectTimer({ name }: { name: string }) {
     return () => clearInterval(id);
   }, [state]);
 
+  if (!hydrated) return null;
   const active = state?.project === name ? state : null;
   const otherActive = state && state.project !== name ? state : null;
 

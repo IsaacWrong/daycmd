@@ -126,6 +126,7 @@ export type RepoStats = {
   recentCommits: number;
   windowDays: number;
   openPRs: number;
+  dailyTrend: number[];
   error?: string;
 };
 
@@ -280,6 +281,7 @@ export async function getRepoStats(
     recentCommits: 0,
     windowDays: days,
     openPRs: 0,
+    dailyTrend: new Array(Math.min(days, 14)).fill(0),
   };
   const gh = client();
   if (!gh) return { ...empty, error: "GITHUB_TOKEN not set" };
@@ -292,7 +294,7 @@ export async function getRepoStats(
   sinceDate.setDate(sinceDate.getDate() - days);
   const since = sinceDate.toISOString();
 
-  const author = opts.author ?? (await getLogin()) ?? undefined;
+  const author = opts.author;
 
   type RawCommit = {
     sha: string;
@@ -320,6 +322,21 @@ export async function getRepoStats(
     const commits = commitsRes.data as RawCommit[];
     const prs = prsRes.data as RawPull[];
     const last = commits[0];
+
+    const trendDays = Math.min(days, 14);
+    const dailyTrend = new Array(trendDays).fill(0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startMs = today.getTime() - (trendDays - 1) * 86_400_000;
+    for (const c of commits) {
+      const dateStr = c.commit.author?.date;
+      if (!dateStr) continue;
+      const d = new Date(dateStr);
+      d.setHours(0, 0, 0, 0);
+      const idx = Math.floor((d.getTime() - startMs) / 86_400_000);
+      if (idx >= 0 && idx < trendDays) dailyTrend[idx] += 1;
+    }
+
     return {
       repo: slug,
       lastCommit: last
@@ -333,6 +350,7 @@ export async function getRepoStats(
       recentCommits: commits.length,
       windowDays: days,
       openPRs: prs.length,
+      dailyTrend,
     };
   } catch (err) {
     return { ...empty, error: err instanceof Error ? err.message : String(err) };

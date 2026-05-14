@@ -239,8 +239,8 @@ function projectAccent(p: ProjectDTO): SourceAccent {
 }
 
 function ProjectRow({ p }: { p: ProjectDTO }) {
-  const commits = p.stats?.recentCommits ?? 0;
-  const spark = [2, 0, 4, 3, 1, 5, 9].map((v) => v * (commits / 30 + 0.1));
+  const trend = p.stats?.dailyTrend ?? [];
+  const spark = trend.length > 0 ? trend : [0, 0, 0, 0, 0, 0, 0];
   const accent = projectAccent(p);
   return (
     <Link
@@ -251,7 +251,13 @@ function ProjectRow({ p }: { p: ProjectDTO }) {
       <span className="flex-1" style={{ letterSpacing: "-0.005em" }}>
         {p.name}
       </span>
-      <Sparkline data={spark} w={42} h={14} tone={`var(--c-${accent})`} />
+      <Sparkline
+        data={spark}
+        w={56}
+        h={14}
+        tone={`var(--c-${accent})`}
+        title={`commits last ${spark.length}d: ${spark.join(", ")}`}
+      />
       <span className="t-mono t-num text-[10px] text-fg-soft" style={{ width: 32, textAlign: "right" }}>
         {p.weeklyHours.toFixed(1)}h
       </span>
@@ -322,7 +328,7 @@ export function ProjectsList() {
         </span>
       }
     >
-      {(data?.projects ?? []).slice(0, 6).map((p) => (
+      {(data?.projects ?? []).map((p) => (
         <ProjectRow key={p.name} p={p} />
       ))}
       {(!data || data.projects.length === 0) && !adding && (

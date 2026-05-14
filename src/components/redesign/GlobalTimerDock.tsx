@@ -10,7 +10,7 @@ import {
 } from "@/lib/timer";
 
 export function GlobalTimerDock() {
-  const { state, pause, resume, stop, discard } = useActiveTimer();
+  const { state, hydrated, pause, resume, stop, discard } = useActiveTimer();
   const [now, setNow] = useState(() => Date.now());
   const [stopping, setStopping] = useState(false);
   const [note, setNote] = useState("");
@@ -24,7 +24,7 @@ export function GlobalTimerDock() {
     return () => clearInterval(id);
   }, [state]);
 
-  if (!state) return null;
+  if (!hydrated || !state) return null;
 
   const running = isRunning(state);
   const elapsed = elapsedMs(state, now);

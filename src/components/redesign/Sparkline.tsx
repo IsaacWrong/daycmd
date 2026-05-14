@@ -3,11 +3,13 @@ export function Sparkline({
   w = 60,
   h = 18,
   tone = "var(--fg)",
+  title,
 }: {
   data: number[];
   w?: number;
   h?: number;
   tone?: string;
+  title?: string;
 }) {
   if (!data || data.length === 0) return null;
   const max = Math.max(...data, 1);
@@ -21,6 +23,7 @@ export function Sparkline({
       height={h}
       style={{ ["--c-tone" as string]: tone, display: "block" }}
     >
+      {title && <title>{title}</title>}
       <path d={area} className="spark-fill" />
       <path d={path} className="spark-stroke" />
     </svg>

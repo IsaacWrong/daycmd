@@ -24,6 +24,7 @@ type ProjectRow = {
     recentCommits: number;
     windowDays: number;
     openPRs: number;
+    dailyTrend: number[];
     lastCommit: { date: string; message: string; url: string } | null;
   } | null;
 };
@@ -431,10 +432,8 @@ export default function ProjectsOverviewPage() {
               <tbody>
                 {visible.map((p) => {
                   const accent = statusAccent(p.status);
-                  const commits = p.stats?.recentCommits ?? 0;
-                  const spark = [2, 0, 4, 3, 1, 5, 9].map(
-                    (v) => v * (commits / 12 + 0.1),
-                  );
+                  const trend = p.stats?.dailyTrend ?? [];
+                  const spark = trend.length > 0 ? trend : [0, 0, 0, 0, 0, 0, 0];
                   return (
                     <tr
                       key={p.name}
@@ -503,7 +502,13 @@ export default function ProjectsOverviewPage() {
                         {p.lastLogDate ?? "—"}
                       </td>
                       <td style={{ padding: "10px 10px", textAlign: "right" }}>
-                        <Sparkline data={spark} w={56} h={14} tone={`var(--c-${accent})`} />
+                        <Sparkline
+                          data={spark}
+                          w={72}
+                          h={14}
+                          tone={`var(--c-${accent})`}
+                          title={`commits last ${spark.length}d: ${spark.join(", ")}`}
+                        />
                       </td>
                     </tr>
                   );

@@ -79,12 +79,7 @@ export async function listProjects(): Promise<Project[]> {
 
 export async function listActiveProjects(): Promise<Project[]> {
   const all = await listProjects();
-  return all.filter(
-    (p) =>
-      p.frontmatter.archived !== true &&
-      typeof p.frontmatter.repo === "string" &&
-      p.frontmatter.repo.length > 0,
-  );
+  return all.filter((p) => p.frontmatter.archived !== true);
 }
 
 async function writeProject(project: Project, nextFrontmatter: ProjectFrontmatter, nextBody: string): Promise<number> {

@@ -46,9 +46,12 @@ export function isRunning(state: TimerState | null): boolean {
 }
 
 export function useActiveTimer() {
-  const [state, setState] = useState<TimerState | null>(() => read());
+  const [state, setState] = useState<TimerState | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
+    setState(read());
+    setHydrated(true);
     function onChange() {
       setState(read());
     }
@@ -57,7 +60,6 @@ export function useActiveTimer() {
     }
     window.addEventListener(CHANGE_EVENT, onChange);
     window.addEventListener("storage", onStorage);
-    setState(read());
     return () => {
       window.removeEventListener(CHANGE_EVENT, onChange);
       window.removeEventListener("storage", onStorage);
@@ -130,7 +132,7 @@ export function useActiveTimer() {
     }
   }, []);
 
-  return { state, start, pause, resume, stop, discard };
+  return { state, hydrated, start, pause, resume, stop, discard };
 }
 
 export function formatElapsed(ms: number): string {

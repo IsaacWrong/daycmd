@@ -48,12 +48,12 @@ describe("listProjects", () => {
     expect(list[0].frontmatter.status).toBe("building");
   });
 
-  it("listActiveProjects skips archived projects and ones without a repo", async () => {
+  it("listActiveProjects skips archived projects", async () => {
     await seedProject("alpha", { type: "project", repo: "user/alpha" });
     await seedProject("beta", { type: "project", repo: "user/beta", archived: true });
     await seedProject("gamma", { type: "project" });
     const active = await projects.listActiveProjects();
-    expect(active.map((p) => p.name)).toEqual(["alpha"]);
+    expect(active.map((p) => p.name).sort()).toEqual(["alpha", "gamma"]);
   });
 });
 
