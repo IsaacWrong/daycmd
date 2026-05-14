@@ -1,6 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { listActiveProjects, createProject } from "@/lib/projects";
-import { findRepoForName, getRepoStats, type RepoStats } from "@/lib/github";
+import {
+  findRepoForName,
+  getRepoStats,
+  getUserDailyCommitsByRepo,
+  type RepoStats,
+} from "@/lib/github";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,6 +13,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const projects = await listActiveProjects();
+    const eventsByRepo = await getUserDailyCommitsByRepo(14);
     const enriched = await Promise.all(
       projects.map(async (p) => {
         let repo: string | null =
@@ -16,7 +22,18 @@ export async function GET() {
             : null;
         if (!repo) repo = await findRepoForName(p.name);
         let stats: RepoStats | null = null;
-        if (repo) stats = await getRepoStats(repo, { days: 30 });
+        if (repo) {
+          stats = await getRepoStats(repo, { days: 30 });
+          const eventTrend = eventsByRepo.get(repo);
+          if (eventTrend) {
+            const sum = eventTrend.reduce((a, b) => a + b, 0);
+            stats = {
+              ...stats,
+              dailyTrend: eventTrend,
+              recentCommits: Math.max(stats.recentCommits, sum),
+            };
+          }
+        }
         return {
           name: p.name,
           status: p.frontmatter.status ?? null,

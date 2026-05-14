@@ -174,6 +174,110 @@ function normName(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+let _eventTrend: Map<string, number[]> | null = null;
+let _eventTrendAt = 0;
+let _eventTrendDays = 0;
+
+type RawBranch = { name: string };
+type RawCommitWithDate = {
+  sha: string;
+  commit: { author: { date: string } | null; committer: { date: string } | null };
+};
+
+async function fetchAllBranchCommits(
+  gh: Octokit,
+  slug: string,
+  sinceIso: string,
+): Promise<{ sha: string; date: string }[]> {
+  const parts = splitRepo(slug);
+  if (!parts) return [];
+
+  let branches: RawBranch[] = [];
+  try {
+    const res = await gh.request("GET /repos/{owner}/{repo}/branches", {
+      owner: parts.owner,
+      repo: parts.repo,
+      per_page: 50,
+    });
+    branches = (res.data as RawBranch[]) ?? [];
+  } catch {
+    return [];
+  }
+  if (branches.length === 0) return [];
+
+  const seen = new Map<string, string>();
+  const results = await Promise.allSettled(
+    branches.map((b) =>
+      gh.request("GET /repos/{owner}/{repo}/commits", {
+        owner: parts.owner,
+        repo: parts.repo,
+        sha: b.name,
+        since: sinceIso,
+        per_page: 100,
+      }),
+    ),
+  );
+  for (const r of results) {
+    if (r.status !== "fulfilled") continue;
+    for (const c of (r.value.data as RawCommitWithDate[]) ?? []) {
+      if (seen.has(c.sha)) continue;
+      const date = c.commit.author?.date ?? c.commit.committer?.date;
+      if (!date) continue;
+      seen.set(c.sha, date);
+    }
+  }
+  return Array.from(seen, ([sha, date]) => ({ sha, date }));
+}
+
+export async function getUserDailyCommitsByRepo(
+  days = 14,
+): Promise<Map<string, number[]>> {
+  const now = Date.now();
+  if (
+    _eventTrend &&
+    _eventTrendDays === days &&
+    now - _eventTrendAt < 60_000
+  ) {
+    return _eventTrend;
+  }
+  const gh = client();
+  const result = new Map<string, number[]>();
+  if (!gh) return result;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const startMs = today.getTime() - (days - 1) * 86_400_000;
+  const sinceIso = new Date(startMs).toISOString();
+
+  const owned = await listOwnedRepos(gh);
+  const settled = await Promise.allSettled(
+    owned.map(async (slug) => ({
+      slug,
+      commits: await fetchAllBranchCommits(gh, slug, sinceIso),
+    })),
+  );
+
+  for (const r of settled) {
+    if (r.status !== "fulfilled") continue;
+    const trend = new Array(days).fill(0);
+    let any = false;
+    for (const c of r.value.commits) {
+      const d = new Date(c.date);
+      d.setHours(0, 0, 0, 0);
+      const idx = Math.floor((d.getTime() - startMs) / 86_400_000);
+      if (idx < 0 || idx >= days) continue;
+      trend[idx] += 1;
+      any = true;
+    }
+    if (any) result.set(r.value.slug, trend);
+  }
+
+  _eventTrend = result;
+  _eventTrendAt = now;
+  _eventTrendDays = days;
+  return result;
+}
+
 export async function findRepoForName(name: string): Promise<string | null> {
   const gh = client();
   if (!gh) return null;

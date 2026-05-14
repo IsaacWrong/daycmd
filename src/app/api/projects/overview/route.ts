@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { listProjects, parseLogEntries, computeWeeklyHoursFromBody } from "@/lib/projects";
-import { findRepoForName, getRepoStats, type RepoStats } from "@/lib/github";
+import {
+  findRepoForName,
+  getRepoStats,
+  getUserDailyCommitsByRepo,
+  type RepoStats,
+} from "@/lib/github";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,6 +29,7 @@ type ProjectOverviewRow = {
 export async function GET() {
   try {
     const projects = await listProjects();
+    const eventsByRepo = await getUserDailyCommitsByRepo(14);
     const rows: ProjectOverviewRow[] = await Promise.all(
       projects.map(async (p) => {
         const entries = parseLogEntries(p.body);
@@ -49,6 +55,15 @@ export async function GET() {
         let stats: RepoStats | null = null;
         if (repo) {
           stats = await getRepoStats(repo, { days: 30 });
+          const eventTrend = eventsByRepo.get(repo);
+          if (eventTrend) {
+            const sum = eventTrend.reduce((a, b) => a + b, 0);
+            stats = {
+              ...stats,
+              dailyTrend: eventTrend,
+              recentCommits: Math.max(stats.recentCommits, sum),
+            };
+          }
         }
         return {
           name: p.name,
