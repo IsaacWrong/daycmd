@@ -3,25 +3,33 @@ import path from "node:path";
 import fs from "node:fs";
 
 const DATA_DIR = path.join(process.cwd(), "data");
-const DB_PATH = path.join(DATA_DIR, "daycmd.db");
-const LEGACY_DB_PATH = path.join(DATA_DIR, "ai-os.db");
+const DB_PATH = path.join(DATA_DIR, "secrets.db");
+const LEGACY_DB_PATHS = [
+  path.join(DATA_DIR, "daycmd.db"),
+  path.join(DATA_DIR, "ai-os.db"),
+];
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-// One-shot migration from the AI OS legacy filename. If only the legacy file
-// exists, rename it (and its sqlite WAL/SHM sidecars) to the new name.
-if (!fs.existsSync(DB_PATH) && fs.existsSync(LEGACY_DB_PATH)) {
-  try {
-    fs.renameSync(LEGACY_DB_PATH, DB_PATH);
-    for (const ext of ["-wal", "-shm"]) {
-      const from = LEGACY_DB_PATH + ext;
-      const to = DB_PATH + ext;
-      if (fs.existsSync(from)) {
-        try { fs.renameSync(from, to); } catch {}
+// One-shot rename of any legacy DB file (and its sqlite WAL/SHM sidecars) to
+// the new name. Reflects the post-vault-migration intent: this DB is now only
+// for device-local secrets and caches, not user data.
+if (!fs.existsSync(DB_PATH)) {
+  for (const legacy of LEGACY_DB_PATHS) {
+    if (!fs.existsSync(legacy)) continue;
+    try {
+      fs.renameSync(legacy, DB_PATH);
+      for (const ext of ["-wal", "-shm"]) {
+        const from = legacy + ext;
+        const to = DB_PATH + ext;
+        if (fs.existsSync(from)) {
+          try { fs.renameSync(from, to); } catch {}
+        }
       }
+      break;
+    } catch {
+      // fall through — better-sqlite3 will just create a fresh DB at DB_PATH
     }
-  } catch {
-    // fall through — better-sqlite3 will just create a fresh DB at DB_PATH
   }
 }
 

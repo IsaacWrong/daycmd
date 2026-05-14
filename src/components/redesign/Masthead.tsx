@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { format } from "date-fns";
 import { usePoll } from "@/lib/hooks";
 import { migrateKey } from "@/lib/ls-migrate";
+import { fetchState, putState } from "@/lib/vault-state-client";
 import type { Tod } from "./TodFrame";
 import { todEmoji, weatherEmoji } from "./Glyph";
 
@@ -12,7 +13,10 @@ type Weather = { tempF: number; hi: number; lo: number; code: number; city: stri
 
 const LS_LOC = "daycmd.weather.loc";
 const LS_DATA = "daycmd.weather.data";
+const WEATHER_LOC_KEY = "weather/loc";
 const CACHE_MS = 30 * 60_000;
+
+type WeatherLoc = { lat: number; lon: number };
 
 function getCachedWeather(): Weather | null {
   if (typeof window === "undefined") return null;
@@ -84,21 +88,34 @@ export function Masthead({
 
   const [weather, setWeather] = useState<Weather | null>(null);
   useEffect(() => {
+    let cancelled = false;
     migrateKey("ai-os.weather.loc", LS_LOC);
     migrateKey("ai-os.weather.data", LS_DATA);
     const cached = getCachedWeather();
     if (cached) setWeather(cached);
-    const rawLoc = localStorage.getItem(LS_LOC);
-    if (!rawLoc) return;
-    try {
-      const loc = JSON.parse(rawLoc) as { lat: number; lon: number };
-      fetchWeatherDirect(loc.lat, loc.lon)
-        .then((w) => {
-          localStorage.setItem(LS_DATA, JSON.stringify({ weather: w, ts: Date.now() }));
-          setWeather(w);
-        })
-        .catch(() => {});
-    } catch {}
+    (async () => {
+      let loc = await fetchState<WeatherLoc>(WEATHER_LOC_KEY);
+      if (!loc) {
+        const rawLoc = localStorage.getItem(LS_LOC);
+        if (rawLoc) {
+          try {
+            loc = JSON.parse(rawLoc) as WeatherLoc;
+            await putState(WEATHER_LOC_KEY, loc);
+          } catch {}
+          localStorage.removeItem(LS_LOC);
+        }
+      }
+      if (!loc || cancelled) return;
+      try {
+        const w = await fetchWeatherDirect(loc.lat, loc.lon);
+        if (cancelled) return;
+        localStorage.setItem(LS_DATA, JSON.stringify({ weather: w, ts: Date.now() }));
+        setWeather(w);
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
   const w = weather;
 

@@ -2,39 +2,57 @@
 
 import { useEffect, useRef, useState } from "react";
 import { migrateKey } from "@/lib/ls-migrate";
+import { fetchState, putState } from "@/lib/vault-state-client";
 
 const POMO_STATE_LS = "daycmd.pomo.state";
 const POMO_TODAY_LS = "daycmd.pomo.today";
 const POMO_DAY_LS = "daycmd.pomo.day";
 const POMO_PROJECT_LS = "daycmd.pomo.project";
+const POMO_STATE_KEY = "pomo";
 const POMO_DUR_MIN = 25;
 const GOAL = 6;
 
 type PomoState = { startedAt: number; durationMs: number } | null;
 
-function loadState(): PomoState {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(POMO_STATE_LS);
-    return raw ? (JSON.parse(raw) as PomoState) : null;
-  } catch {
-    return null;
-  }
-}
+type PomoVaultState = {
+  state: PomoState;
+  today: number;
+  day: string;
+  project: string;
+};
 
 function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function loadTodayCount(): number {
-  if (typeof window === "undefined") return 0;
-  const day = localStorage.getItem(POMO_DAY_LS);
-  if (day !== todayKey()) {
-    localStorage.setItem(POMO_DAY_LS, todayKey());
-    localStorage.setItem(POMO_TODAY_LS, "0");
-    return 0;
-  }
-  return Number(localStorage.getItem(POMO_TODAY_LS) ?? "0");
+// One-shot pull from localStorage on first run, then clear LS so the vault is
+// the only source of truth.
+async function migrateLocalStorage(defaultProject: string): Promise<PomoVaultState | null> {
+  if (typeof window === "undefined") return null;
+  migrateKey("ai-os.pomo.state", POMO_STATE_LS);
+  migrateKey("ai-os.pomo.today", POMO_TODAY_LS);
+  migrateKey("ai-os.pomo.day", POMO_DAY_LS);
+  migrateKey("ai-os.pomo.project", POMO_PROJECT_LS);
+  const stateRaw = localStorage.getItem(POMO_STATE_LS);
+  const todayRaw = localStorage.getItem(POMO_TODAY_LS);
+  const dayRaw = localStorage.getItem(POMO_DAY_LS);
+  const projectRaw = localStorage.getItem(POMO_PROJECT_LS);
+  if (!stateRaw && !todayRaw && !dayRaw && !projectRaw) return null;
+  let state: PomoState = null;
+  try {
+    state = stateRaw ? (JSON.parse(stateRaw) as PomoState) : null;
+  } catch {}
+  const migrated: PomoVaultState = {
+    state,
+    today: Number(todayRaw ?? "0"),
+    day: dayRaw ?? todayKey(),
+    project: projectRaw || defaultProject,
+  };
+  localStorage.removeItem(POMO_STATE_LS);
+  localStorage.removeItem(POMO_TODAY_LS);
+  localStorage.removeItem(POMO_DAY_LS);
+  localStorage.removeItem(POMO_PROJECT_LS);
+  return migrated;
 }
 
 function formatMS(ms: number): string {
@@ -47,21 +65,60 @@ function formatMS(ms: number): string {
 export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: string }) {
   const [state, setState] = useState<PomoState>(null);
   const [today, setToday] = useState(0);
+  const [day, setDay] = useState<string>(() => todayKey());
   const [now, setNow] = useState<number>(() => Date.now());
   const [project, setProject] = useState(defaultProject);
+  const [hydrated, setHydrated] = useState(false);
   const [editing, setEditing] = useState(false);
   const completedRef = useRef(false);
 
+  function persist(patch: Partial<PomoVaultState>) {
+    const next: PomoVaultState = {
+      state: patch.state !== undefined ? patch.state : state,
+      today: patch.today !== undefined ? patch.today : today,
+      day: patch.day !== undefined ? patch.day : day,
+      project: patch.project !== undefined ? patch.project : project,
+    };
+    void putState(POMO_STATE_KEY, next);
+  }
+
   useEffect(() => {
-    migrateKey("ai-os.pomo.state", POMO_STATE_LS);
-    migrateKey("ai-os.pomo.today", POMO_TODAY_LS);
-    migrateKey("ai-os.pomo.day", POMO_DAY_LS);
-    migrateKey("ai-os.pomo.project", POMO_PROJECT_LS);
-    setState(loadState());
-    setToday(loadTodayCount());
-    const p = localStorage.getItem(POMO_PROJECT_LS);
-    if (p) setProject(p);
-  }, []);
+    let cancelled = false;
+    (async () => {
+      let remote = await fetchState<PomoVaultState>(POMO_STATE_KEY);
+      if (!remote) {
+        const migrated = await migrateLocalStorage(defaultProject);
+        if (migrated) {
+          await putState(POMO_STATE_KEY, migrated);
+          remote = migrated;
+        }
+      }
+      if (cancelled) return;
+      const today0 = todayKey();
+      if (remote) {
+        const sameDay = remote.day === today0;
+        const newToday = sameDay ? remote.today : 0;
+        setState(remote.state);
+        setToday(newToday);
+        setDay(today0);
+        if (remote.project) setProject(remote.project);
+        if (!sameDay) {
+          await putState(POMO_STATE_KEY, {
+            state: remote.state,
+            today: 0,
+            day: today0,
+            project: remote.project || defaultProject,
+          });
+        }
+      } else {
+        setDay(today0);
+      }
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [defaultProject]);
 
   useEffect(() => {
     if (!state) return;
@@ -70,6 +127,7 @@ export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: stri
   }, [state]);
 
   useEffect(() => {
+    if (!hydrated) return;
     if (!state) {
       completedRef.current = false;
       return;
@@ -78,11 +136,11 @@ export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: stri
     if (remaining <= 0 && !completedRef.current) {
       completedRef.current = true;
       const nextCount = today + 1;
+      const today0 = todayKey();
       setToday(nextCount);
-      localStorage.setItem(POMO_TODAY_LS, String(nextCount));
-      localStorage.setItem(POMO_DAY_LS, todayKey());
+      setDay(today0);
       setState(null);
-      localStorage.removeItem(POMO_STATE_LS);
+      persist({ today: nextCount, day: today0, state: null });
       if (nextCount > 0 && nextCount % 4 === 0) {
         const note = `Pomodoro ${nextCount} done · ${project}`;
         fetch("/api/obsidian/daily", {
@@ -92,26 +150,26 @@ export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: stri
         }).catch(() => {});
       }
     }
-  }, [state, now, today, project]);
+  }, [state, now, today, project, hydrated]);
 
   function start() {
     const s = { startedAt: Date.now(), durationMs: POMO_DUR_MIN * 60_000 };
     setState(s);
     setNow(Date.now());
     completedRef.current = false;
-    localStorage.setItem(POMO_STATE_LS, JSON.stringify(s));
+    persist({ state: s });
   }
 
   function stop() {
     setState(null);
-    localStorage.removeItem(POMO_STATE_LS);
+    persist({ state: null });
   }
 
   function commitProject(value: string) {
     const v = value.trim();
     if (v) {
       setProject(v);
-      localStorage.setItem(POMO_PROJECT_LS, v);
+      persist({ project: v });
     }
     setEditing(false);
   }

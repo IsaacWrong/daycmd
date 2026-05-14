@@ -6,6 +6,8 @@ import { runAgentOnce, type UsageTotals } from "./agent";
 import { streamCompile } from "./kb-compile";
 import { streamLint } from "./kb-lint";
 import { logError } from "./errors";
+import { readStateSync, writeStateSync } from "./vault-state";
+import { env } from "./config";
 
 export type AutomationKind = "agent" | "compile" | "lint";
 
@@ -21,30 +23,97 @@ export type Automation = {
   created_at: number;
 };
 
-type Row = Omit<Automation, "enabled" | "kind"> & {
-  enabled: number;
-  kind: string | null;
+const AUTOMATIONS_KEY = "automations";
+
+type StoredAutomation = {
+  id: number;
+  name: string;
+  cron: string;
+  prompt: string;
+  enabled: boolean;
+  kind: AutomationKind;
+  target_category: string | null;
+  last_run_at: number | null;
+  created_at: number;
 };
 
-function rowToAutomation(r: Row): Automation {
-  return { ...r, enabled: !!r.enabled, kind: (r.kind as AutomationKind) ?? "agent" };
+type DbRow = {
+  id: number;
+  name: string;
+  cron: string;
+  prompt: string;
+  enabled: number;
+  kind: string | null;
+  target_category: string | null;
+  last_run_at: number | null;
+  created_at: number;
+};
+
+let _migrated = false;
+function migrateFromDb(): StoredAutomation[] | null {
+  if (_migrated) return null;
+  _migrated = true;
+  let rows: DbRow[] = [];
+  try {
+    rows = db
+      .prepare(
+        "SELECT id, name, cron, prompt, enabled, kind, target_category, last_run_at, created_at FROM automations ORDER BY id ASC",
+      )
+      .all() as DbRow[];
+  } catch {
+    return null;
+  }
+  if (rows.length === 0) return null;
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    cron: r.cron,
+    prompt: r.prompt,
+    enabled: !!r.enabled,
+    kind: ((r.kind ?? "agent") as AutomationKind),
+    target_category: r.target_category,
+    last_run_at: r.last_run_at,
+    created_at: r.created_at,
+  }));
 }
 
-const COLS =
-  "id, name, cron, prompt, enabled, last_run_at, created_at, kind, target_category";
+function loadAll(): StoredAutomation[] {
+  if (!env.VAULT_PATH) return [];
+  const remote = readStateSync<StoredAutomation[]>(AUTOMATIONS_KEY);
+  if (remote) return remote;
+  const migrated = migrateFromDb();
+  if (migrated) {
+    try {
+      writeStateSync(AUTOMATIONS_KEY, migrated);
+    } catch {}
+    return migrated;
+  }
+  return [];
+}
+
+function saveAll(next: StoredAutomation[]): void {
+  if (!env.VAULT_PATH) return;
+  writeStateSync(AUTOMATIONS_KEY, next);
+}
+
+function nextId(items: StoredAutomation[]): number {
+  return items.reduce((m, x) => Math.max(m, x.id), 0) + 1;
+}
+
+function toAutomation(s: StoredAutomation): Automation {
+  return { ...s };
+}
 
 export function listAutomations(): Automation[] {
-  const rows = db
-    .prepare(`SELECT ${COLS} FROM automations ORDER BY id DESC`)
-    .all() as Row[];
-  return rows.map(rowToAutomation);
+  return loadAll()
+    .slice()
+    .sort((a, b) => b.id - a.id)
+    .map(toAutomation);
 }
 
 export function getAutomation(id: number): Automation | null {
-  const row = db
-    .prepare(`SELECT ${COLS} FROM automations WHERE id = ?`)
-    .get(id) as Row | undefined;
-  return row ? rowToAutomation(row) : null;
+  const found = loadAll().find((a) => a.id === id);
+  return found ? toAutomation(found) : null;
 }
 
 export function createAutomation(input: {
@@ -55,21 +124,20 @@ export function createAutomation(input: {
   kind?: AutomationKind;
   target_category?: string | null;
 }): Automation {
-  const kind = input.kind ?? "agent";
-  const info = db
-    .prepare(
-      "INSERT INTO automations (name, cron, prompt, enabled, kind, target_category, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    )
-    .run(
-      input.name,
-      input.cron,
-      input.prompt ?? "",
-      input.enabled === false ? 0 : 1,
-      kind,
-      input.target_category ?? null,
-      Date.now(),
-    );
-  return getAutomation(Number(info.lastInsertRowid))!;
+  const all = loadAll();
+  const row: StoredAutomation = {
+    id: nextId(all),
+    name: input.name,
+    cron: input.cron,
+    prompt: input.prompt ?? "",
+    enabled: input.enabled !== false,
+    kind: input.kind ?? "agent",
+    target_category: input.target_category ?? null,
+    last_run_at: null,
+    created_at: Date.now(),
+  };
+  saveAll([...all, row]);
+  return toAutomation(row);
 }
 
 export function updateAutomation(
@@ -83,9 +151,12 @@ export function updateAutomation(
     target_category: string | null;
   }>,
 ): Automation | null {
-  const cur = getAutomation(id);
-  if (!cur) return null;
-  const next = {
+  const all = loadAll();
+  const idx = all.findIndex((a) => a.id === id);
+  if (idx < 0) return null;
+  const cur = all[idx];
+  const next: StoredAutomation = {
+    ...cur,
     name: patch.name ?? cur.name,
     cron: patch.cron ?? cur.cron,
     prompt: patch.prompt ?? cur.prompt,
@@ -94,22 +165,29 @@ export function updateAutomation(
     target_category:
       patch.target_category !== undefined ? patch.target_category : cur.target_category,
   };
-  db.prepare(
-    "UPDATE automations SET name = ?, cron = ?, prompt = ?, enabled = ?, kind = ?, target_category = ? WHERE id = ?",
-  ).run(
-    next.name,
-    next.cron,
-    next.prompt,
-    next.enabled ? 1 : 0,
-    next.kind,
-    next.target_category,
-    id,
-  );
-  return getAutomation(id);
+  const out = all.slice();
+  out[idx] = next;
+  saveAll(out);
+  return toAutomation(next);
 }
 
 export function deleteAutomation(id: number): void {
-  db.prepare("DELETE FROM automations WHERE id = ?").run(id);
+  const all = loadAll();
+  const next = all.filter((a) => a.id !== id);
+  if (next.length !== all.length) saveAll(next);
+  // Also clear local run history for this automation so the orphans don't pile up.
+  try {
+    db.prepare("DELETE FROM automation_runs WHERE automation_id = ?").run(id);
+  } catch {}
+}
+
+function setLastRunAt(id: number, ts: number): void {
+  const all = loadAll();
+  const idx = all.findIndex((a) => a.id === id);
+  if (idx < 0) return;
+  const out = all.slice();
+  out[idx] = { ...out[idx], last_run_at: ts };
+  saveAll(out);
 }
 
 export type AutomationRun = {
@@ -135,13 +213,14 @@ export function listRuns(automationId: number, limit = 5): AutomationRun[] {
 }
 
 export function listRecentRuns(limit = 10): (AutomationRun & { name: string })[] {
-  return db
+  const rows = db
     .prepare(
-      `SELECT r.*, a.name AS name FROM automation_runs r
-       JOIN automations a ON a.id = r.automation_id
-       ORDER BY r.started_at DESC LIMIT ?`,
+      "SELECT * FROM automation_runs ORDER BY started_at DESC LIMIT ?",
     )
-    .all(limit) as (AutomationRun & { name: string })[];
+    .all(limit) as AutomationRun[];
+  const all = loadAll();
+  const nameById = new Map(all.map((a) => [a.id, a.name]));
+  return rows.map((r) => ({ ...r, name: nameById.get(r.automation_id) ?? `#${r.automation_id}` }));
 }
 
 export async function runAutomation(id: number): Promise<AutomationRun> {
@@ -219,10 +298,7 @@ export async function runAutomation(id: number): Promise<AutomationRun> {
       result.usage.cache_write_tokens,
       runId,
     );
-    db.prepare("UPDATE automations SET last_run_at = ? WHERE id = ?").run(
-      endedAt,
-      id,
-    );
+    setLastRunAt(id, endedAt);
   } catch (e) {
     db.prepare(
       "UPDATE automation_runs SET ended_at = ?, ok = 0, error = ? WHERE id = ?",
@@ -240,10 +316,7 @@ const DEFAULT_COMPILE_CRON = "0 6 * * *";
 const DEFAULT_LINT_CRON = "30 6 * * *";
 
 function automationExists(name: string): boolean {
-  const row = db
-    .prepare("SELECT 1 FROM automations WHERE name = ?")
-    .get(name) as unknown;
-  return !!row;
+  return loadAll().some((a) => a.name === name);
 }
 
 /**
