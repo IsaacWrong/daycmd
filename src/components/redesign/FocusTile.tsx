@@ -1,8 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { migrateKey } from "@/lib/ls-migrate";
 import { fetchState, putState } from "@/lib/vault-state-client";
+import { usePoll } from "@/lib/hooks";
+import { useActiveTimer } from "@/lib/timer";
+
+type ProjectListItem = { name: string };
+type ProjectsResp = { projects: ProjectListItem[] };
 
 const POMO_STATE_LS = "daycmd.pomo.state";
 const POMO_TODAY_LS = "daycmd.pomo.today";
@@ -62,15 +67,47 @@ function formatMS(ms: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: string }) {
+export function FocusTile({ defaultProject = "Daycmd" }: { defaultProject?: string }) {
   const [state, setState] = useState<PomoState>(null);
   const [today, setToday] = useState(0);
   const [day, setDay] = useState<string>(() => todayKey());
   const [now, setNow] = useState<number>(() => Date.now());
   const [project, setProject] = useState(defaultProject);
   const [hydrated, setHydrated] = useState(false);
-  const [editing, setEditing] = useState(false);
   const completedRef = useRef(false);
+  const { data: projectsResp } = usePoll<ProjectsResp>("/api/projects", 60_000);
+  const projects = projectsResp?.projects ?? [];
+  const timer = useActiveTimer();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    function onDown(e: MouseEvent) {
+      if (!pickerRef.current) return;
+      if (!pickerRef.current.contains(e.target as Node)) setPickerOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setPickerOpen(false);
+    }
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [pickerOpen]);
+
+  const handlePick = useCallback(
+    (value: string) => {
+      setPickerOpen(false);
+      if (!value) return;
+      setProject(value);
+      persist({ project: value });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state, today, day],
+  );
 
   function persist(patch: Partial<PomoVaultState>) {
     const next: PomoVaultState = {
@@ -141,6 +178,7 @@ export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: stri
       setDay(today0);
       setState(null);
       persist({ today: nextCount, day: today0, state: null });
+      void timer.stop(`Pomodoro ${nextCount} · ${project}`);
       if (nextCount > 0 && nextCount % 4 === 0) {
         const note = `Pomodoro ${nextCount} done · ${project}`;
         fetch("/api/obsidian/daily", {
@@ -150,7 +188,7 @@ export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: stri
         }).catch(() => {});
       }
     }
-  }, [state, now, today, project, hydrated]);
+  }, [state, now, today, project, hydrated, timer]);
 
   function start() {
     const s = { startedAt: Date.now(), durationMs: POMO_DUR_MIN * 60_000 };
@@ -158,28 +196,22 @@ export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: stri
     setNow(Date.now());
     completedRef.current = false;
     persist({ state: s });
+    timer.start(project);
   }
 
   function stop() {
     setState(null);
     persist({ state: null });
+    timer.discard();
   }
 
-  function commitProject(value: string) {
-    const v = value.trim();
-    if (v) {
-      setProject(v);
-      persist({ project: v });
-    }
-    setEditing(false);
-  }
 
   const remaining = state ? state.startedAt + state.durationMs - now : POMO_DUR_MIN * 60_000;
   const label = state ? formatMS(remaining) : `${POMO_DUR_MIN}:00`;
 
   return (
     <section className="mb-8">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-6">
         <span className="t-eyebrow" style={{ color: "var(--c-tasks)" }}>
           ● Focus
         </span>
@@ -188,33 +220,116 @@ export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: stri
           {today}/{GOAL} pomodoros
         </span>
       </div>
-      <hr className="hr-rule mb-4" />
+      <hr className="hr-rule" style={{ marginBottom: 24 }} />
 
       <div className="mb-3">
         <div className="t-mono text-[10px] text-fg-soft mb-1">WORKING ON</div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" ref={pickerRef} style={{ position: "relative" }}>
           <span className="src-dot src-tasks" />
-          {editing ? (
-            <input
-              autoFocus
-              defaultValue={project}
-              onBlur={(e) => commitProject(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitProject((e.target as HTMLInputElement).value);
-                if (e.key === "Escape") setEditing(false);
+          <button
+            type="button"
+            onClick={() => {
+              if (state) return;
+              setPickerOpen((v) => !v);
+            }}
+            disabled={!!state}
+            className="text-[15px] font-medium text-fg inline-flex items-center"
+            style={{
+              letterSpacing: "-0.01em",
+              background: "transparent",
+              border: 0,
+              padding: 0,
+              outline: 0,
+              gap: 6,
+              cursor: state ? "default" : "pointer",
+              opacity: state ? 0.7 : 1,
+            }}
+            aria-haspopup="listbox"
+            aria-expanded={pickerOpen}
+          >
+            <span>{project || "Select project…"}</span>
+            <svg
+              width="10"
+              height="6"
+              viewBox="0 0 10 6"
+              fill="none"
+              style={{
+                color: "var(--fg-soft)",
+                transform: pickerOpen ? "rotate(180deg)" : "none",
+                transition: "transform 0.15s",
               }}
-              className="flex-1 bg-transparent border-0 outline-0 text-[15px] font-medium text-fg"
-              style={{ letterSpacing: "-0.01em" }}
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="text-[15px] font-medium text-left hover:opacity-80"
-              style={{ letterSpacing: "-0.01em" }}
             >
-              {project}
-            </button>
+              <path
+                d="M1 1l4 4 4-4"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          {pickerOpen && (
+            <ul
+              role="listbox"
+              style={{
+                position: "absolute",
+                top: "calc(100% + 6px)",
+                left: 14,
+                minWidth: 180,
+                maxHeight: 240,
+                overflowY: "auto",
+                margin: 0,
+                padding: 4,
+                listStyle: "none",
+                background: "oklch(from var(--bg) l c h / 0.96)",
+                backdropFilter: "blur(10px)",
+                border: "1px solid var(--rule)",
+                borderRadius: 8,
+                boxShadow: "0 10px 30px oklch(0 0 0 / 0.20)",
+                zIndex: 30,
+                fontSize: 13,
+              }}
+            >
+              {projects.length === 0 && (
+                <li
+                  className="text-fg-soft"
+                  style={{ padding: "6px 10px", fontSize: 12 }}
+                >
+                  No projects
+                </li>
+              )}
+              {projects.map((p) => {
+                const active = p.name === project;
+                return (
+                  <li key={p.name}>
+                    <button
+                      type="button"
+                      onClick={() => handlePick(p.name)}
+                      className="w-full text-left hover:bg-fg/5"
+                      style={{
+                        padding: "6px 10px",
+                        background: active
+                          ? "oklch(from var(--c-tasks) l c h / 0.12)"
+                          : "transparent",
+                        color: "var(--fg)",
+                        border: 0,
+                        borderRadius: 4,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <span
+                        className="src-dot src-tasks"
+                        style={{ width: 5, height: 5, opacity: active ? 1 : 0.4 }}
+                      />
+                      {p.name}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       </div>
@@ -266,14 +381,6 @@ export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: stri
             ▶ Start {label}
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="text-[12px] text-fg-soft hover:text-fg"
-          style={{ padding: "9px 12px", background: "transparent", border: 0, cursor: "pointer" }}
-        >
-          Change…
-        </button>
       </div>
     </section>
   );
