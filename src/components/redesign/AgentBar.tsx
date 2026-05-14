@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { Markdown } from "@/components/Markdown";
 import { SKILLS, type SkillDef } from "@/lib/skills-defs";
 import { Paperclip, Sun } from "./Glyph";
@@ -273,7 +272,6 @@ export function AgentBar({
 }) {
   const agent = useAgent(category);
   const [input, setInput] = useState("");
-  const [mounted, setMounted] = useState(false);
   const [catOpen, setCatOpen] = useState(false);
   const [pending, setPending] = useState<Attachment[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
@@ -293,10 +291,6 @@ export function AgentBar({
   const barWrapRef = useRef<HTMLDivElement>(null);
   const bubblesScrollRef = useRef<HTMLDivElement>(null);
   const bubblesBaselineRef = useRef(0);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     if (variant !== "wide" || !barOpen) return;
@@ -624,30 +618,27 @@ export function AgentBar({
   }
 
   // Wide variant — bottom dock with floating agent overlay
-  const backdrop =
-    barMounted && mounted
-      ? createPortal(
-          <div
-            onClick={() => setBarOpen(false)}
-            className={barClosing ? "agent-backdrop-exit" : "agent-backdrop-enter"}
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 40,
-              background: "oklch(0 0 0 / 0.32)",
-              backdropFilter: "blur(10px)",
-              WebkitBackdropFilter: "blur(10px)",
-              cursor: "pointer",
-            }}
-            aria-hidden="true"
-          />,
-          document.body,
-        )
-      : null;
+  const backdrop = barMounted ? (
+    <div
+      onClick={() => setBarOpen(false)}
+      className={barClosing ? "agent-backdrop-exit" : "agent-backdrop-enter"}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "oklch(0 0 0 / 0.32)",
+        backdropFilter: "blur(10px)",
+        WebkitBackdropFilter: "blur(10px)",
+        cursor: "pointer",
+        pointerEvents: "auto",
+      }}
+      aria-hidden="true"
+    />
+  ) : null;
 
   return (
     <>
       {hiddenFileInput}
+      {backdrop}
       <div
         ref={barWrapRef}
         style={{
@@ -1011,7 +1002,6 @@ export function AgentBar({
       </form>
       )}
       </div>
-      {backdrop}
     </>
   );
 }
