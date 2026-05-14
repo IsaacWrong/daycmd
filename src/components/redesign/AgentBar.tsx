@@ -231,6 +231,7 @@ export function AgentBar({
   };
   const [barMounted, setBarMounted] = useState(barOpen);
   const [barClosing, setBarClosing] = useState(false);
+  const [barSettled, setBarSettled] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const catBtnRef = useRef<HTMLButtonElement>(null);
   const catMenuRef = useRef<HTMLDivElement>(null);
@@ -264,10 +265,12 @@ export function AgentBar({
     if (barOpen) {
       setBarMounted(true);
       setBarClosing(false);
+      setBarSettled(false);
       return;
     }
     if (!barMounted) return;
     setBarClosing(true);
+    setBarSettled(false);
     const id = setTimeout(() => {
       setBarMounted(false);
       setBarClosing(false);
@@ -788,7 +791,16 @@ export function AgentBar({
       {barMounted && (
       <form
         onSubmit={submit}
-        className={barClosing ? "agent-bar-exit" : "agent-bar-enter"}
+        className={
+          barClosing
+            ? "agent-bar-exit"
+            : barSettled
+              ? undefined
+              : "agent-bar-enter"
+        }
+        onAnimationEnd={() => {
+          if (!barClosing) setBarSettled(true);
+        }}
         style={{ width: "100%" }}
       >
         {attachmentChips}
