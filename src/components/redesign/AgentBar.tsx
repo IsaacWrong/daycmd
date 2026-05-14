@@ -681,16 +681,16 @@ export function AgentBar({
         <div
           className={barClosing ? "agent-overlay-exit" : "agent-overlay-enter"}
           style={{
+            position: "fixed",
+            top: 24,
+            right: 56,
             display: "flex",
             alignItems: "center",
-            gap: 12,
-            padding: "0 4px",
-            color: "var(--fg-soft)",
+            gap: 18,
             fontSize: 11,
+            pointerEvents: "auto",
           }}
         >
-          <span className="t-eyebrow">Agent · {agent.category}</span>
-          <span style={{ flex: 1 }} />
           {agent.messages.length > 0 && (
             <button
               type="button"
