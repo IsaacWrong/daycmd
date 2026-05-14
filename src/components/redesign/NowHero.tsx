@@ -206,8 +206,8 @@ export function NowHero() {
   const now = findNow(events, Date.now());
 
   return (
-    <div className="focus-keep mb-7">
-      <div className="t-eyebrow mb-2.5">
+    <div className="focus-keep mb-10">
+      <div className="t-eyebrow mb-3.5">
         {now ? (
           <>
             Now · ends {format(new Date(now.end), "h:mm a")} ·{" "}
@@ -218,7 +218,7 @@ export function NowHero() {
         )}
       </div>
       <h2
-        className="m-0 mb-[18px] font-medium"
+        className="m-0 mb-[26px] font-medium"
         style={{
           fontSize: 36,
           letterSpacing: "-0.025em",

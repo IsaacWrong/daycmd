@@ -26,7 +26,7 @@ export function DailyNotePreview() {
         </span>
       }
     >
-      <div style={{ paddingLeft: 18, borderLeft: "2px solid var(--rule)" }}>
+      <div style={{ paddingLeft: 22, borderLeft: "2px solid var(--rule)" }}>
         {lines.slice(0, 14).map((line, i) => {
           if (line.startsWith("## ")) {
             return (

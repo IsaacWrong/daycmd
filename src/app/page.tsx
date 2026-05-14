@@ -50,16 +50,16 @@ export default function Home() {
         className="grid"
         style={{
           flex: 1,
-          gridTemplateColumns: "300px 1fr 320px",
-          gap: 40,
-          padding: "20px 48px 140px",
+          gridTemplateColumns: "320px 1fr 340px",
+          gap: 56,
+          padding: "32px 56px 160px",
           minHeight: 0,
         }}
       >
         <aside
           className="scroll dimmable"
           style={{
-            paddingRight: 18,
+            paddingRight: 24,
             borderRight: "1px solid var(--rule)",
           }}
         >
@@ -87,13 +87,13 @@ export default function Home() {
         className="focus-keep"
         style={{
           position: "fixed",
-          left: 48,
-          right: 48,
-          bottom: 22,
+          left: 56,
+          right: 56,
+          bottom: 28,
           zIndex: 5,
           display: "flex",
           flexDirection: "column",
-          gap: 14,
+          gap: 16,
         }}
       >
         <div style={{ opacity: focus ? 1 : 0.85, transition: "opacity 320ms ease" }}>

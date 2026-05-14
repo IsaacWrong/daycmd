@@ -48,8 +48,8 @@ function NumberRow({
   spark?: number[];
 }) {
   return (
-    <div className="flex items-center gap-2.5 py-1.5">
-      <span className="flex-1 text-[12.5px] text-fg-soft">{label}</span>
+    <div className="flex items-center gap-2.5 py-2">
+      <span className="flex-1 text-[13px] text-fg-soft">{label}</span>
       <span
         className="t-num text-[15px] font-medium"
         style={{ color: tone ?? "var(--fg)", letterSpacing: "-0.01em" }}
@@ -111,9 +111,9 @@ export function TodayInNumbers() {
 
   return (
     <SectionMini title="Today in numbers">
-      <div className="py-1.5">
+      <div className="py-2">
         <div className="flex items-center gap-2.5">
-          <span className="flex-1 text-[12.5px] text-fg-soft">Spend</span>
+          <span className="flex-1 text-[13px] text-fg-soft">Spend</span>
           <span
             className="t-num text-[15px] font-medium"
             style={{ color: spendTone, letterSpacing: "-0.01em" }}
@@ -129,7 +129,7 @@ export function TodayInNumbers() {
         </div>
         {cap > 0 && (
           <div
-            className="h-[3px] rounded-full overflow-hidden mt-1.5"
+            className="h-[3px] rounded-full overflow-hidden mt-2"
             style={{ background: "oklch(from var(--fg) l c h / 0.08)" }}
           >
             <div
@@ -182,9 +182,9 @@ function StreakBar({
   tone: string;
 }) {
   return (
-    <div className="py-1.5">
-      <div className="flex items-baseline mb-1.5">
-        <span className="flex-1 text-[12.5px] text-fg-soft">{label}</span>
+    <div className="py-2">
+      <div className="flex items-baseline mb-2">
+        <span className="flex-1 text-[13px] text-fg-soft">{label}</span>
         <span className="t-num text-[14px] font-medium" style={{ color: tone }}>
           {value}
         </span>
@@ -246,7 +246,7 @@ function ProjectRow({ p }: { p: ProjectDTO }) {
   return (
     <Link
       href={`/projects/${encodeURIComponent(p.name)}`}
-      className="flex items-center gap-2.5 py-1.5 text-[13px] hover:opacity-80"
+      className="flex items-center gap-2.5 py-2 text-[13px] hover:opacity-80"
     >
       <span className={`src-dot src-${accent}`} style={{ width: 6, height: 6 }} />
       <span className="flex-1" style={{ letterSpacing: "-0.005em" }}>
@@ -330,14 +330,14 @@ export function ProjectsList() {
         <p className="text-[12px] text-fg-soft py-1">No active projects.</p>
       )}
       {adding && (
-        <form onSubmit={submit} className="py-1.5 flex flex-col gap-1.5">
+        <form onSubmit={submit} className="py-2 flex flex-col gap-1.5">
           <input
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Name"
             disabled={busy}
-            className="text-[12.5px]"
+            className="text-[13px]"
             style={{
               background: "transparent",
               border: "1px solid var(--rule)",
@@ -352,7 +352,7 @@ export function ProjectsList() {
             onChange={(e) => setRepo(e.target.value)}
             placeholder="owner/repo (optional)"
             disabled={busy}
-            className="text-[12.5px]"
+            className="text-[13px]"
             style={{
               background: "transparent",
               border: "1px solid var(--rule)",

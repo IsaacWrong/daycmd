@@ -28,8 +28,8 @@ export function Section({
   className?: string;
 }) {
   return (
-    <section className={"mb-7 " + (className ?? "")}>
-      <header className="flex items-baseline gap-3 mb-3.5">
+    <section className={"mb-10 " + (className ?? "")}>
+      <header className="flex items-baseline gap-3 mb-4">
         {accent && <span className={`src-dot src-${accent}`} style={{ transform: "translateY(-2px)" }} />}
         {eyebrow && <span className="t-eyebrow">{eyebrow}</span>}
         {title && (
@@ -43,7 +43,7 @@ export function Section({
         <span className="flex-1" />
         {right}
       </header>
-      <hr className="hr-rule mb-3.5" />
+      <hr className="hr-rule mb-4" />
       {children}
     </section>
   );
@@ -65,8 +65,8 @@ export function SectionMini({
   className?: string;
 }) {
   return (
-    <section className={"mb-6 " + (className ?? "")}>
-      <div className="flex items-center gap-2 mb-2">
+    <section className={"mb-8 " + (className ?? "")}>
+      <div className="flex items-center gap-2 mb-3">
         {accent && <span className={`src-dot src-${accent}`} style={{ width: 6, height: 6 }} />}
         <span className="t-eyebrow">{title}</span>
         {typeof count === "number" && (
@@ -74,7 +74,7 @@ export function SectionMini({
         )}
         {right}
       </div>
-      <hr className="hr-rule mb-2.5" />
+      <hr className="hr-rule mb-3.5" />
       {children}
     </section>
   );

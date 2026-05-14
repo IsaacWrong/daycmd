@@ -178,8 +178,8 @@ export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: stri
   const label = state ? formatMS(remaining) : `${POMO_DUR_MIN}:00`;
 
   return (
-    <section className="mb-6">
-      <div className="flex items-center gap-2 mb-2.5">
+    <section className="mb-8">
+      <div className="flex items-center gap-2 mb-3">
         <span className="t-eyebrow" style={{ color: "var(--c-tasks)" }}>
           ● Focus
         </span>
@@ -188,9 +188,9 @@ export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: stri
           {today}/{GOAL} pomodoros
         </span>
       </div>
-      <hr className="hr-rule mb-3.5" />
+      <hr className="hr-rule mb-4" />
 
-      <div className="mb-2.5">
+      <div className="mb-3">
         <div className="t-mono text-[10px] text-fg-soft mb-1">WORKING ON</div>
         <div className="flex items-center gap-2">
           <span className="src-dot src-tasks" />
@@ -219,7 +219,7 @@ export function FocusTile({ defaultProject = "daycmd" }: { defaultProject?: stri
         </div>
       </div>
 
-      <div className="flex gap-1 mb-3.5">
+      <div className="flex gap-1 mb-4">
         {Array.from({ length: GOAL }, (_, i) => (
           <div
             key={i}

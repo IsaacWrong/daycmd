@@ -58,8 +58,8 @@ function CalendarRow({ e }: { e: CalEvent }) {
     <button
       key={`${e.calendar}-${e.id}`}
       onClick={() => overlay.openEvent(e)}
-      className="flex items-center gap-2.5 py-1 text-[12.5px] hover:opacity-80 w-full text-left"
-      style={{ background: "transparent", border: "none", padding: "4px 0", cursor: "pointer" }}
+      className="flex items-center gap-2.5 py-1 text-[13px] hover:opacity-80 w-full text-left"
+      style={{ background: "transparent", border: "none", padding: "6px 0", cursor: "pointer" }}
     >
       <span
         className="t-mono text-[11px] text-fg-soft"
@@ -116,9 +116,9 @@ function CalendarSection() {
             ? `${BUCKET_LABEL[b]} · from ${format(new Date(parseEventTime(items[0].start)), "EEE MMM d")}`
             : BUCKET_LABEL[b];
         return (
-          <div key={b} className="mb-1.5" style={{ marginTop: b === "today" ? 0 : 10 }}>
+          <div key={b} className="mb-2" style={{ marginTop: b === "today" ? 0 : 14 }}>
             <div
-              className="t-mono uppercase mb-1 flex items-center gap-2"
+              className="t-mono uppercase mb-1.5 flex items-center gap-2"
               style={{
                 fontSize: 9,
                 color: b === "today" ? "var(--c-calendar)" : "var(--fg-soft)",
@@ -158,8 +158,8 @@ function InboxSection() {
         <button
           key={m.id}
           onClick={() => mail.openThread(m.threadId)}
-          className="flex items-center gap-2 py-1 text-[12.5px] hover:opacity-80 w-full text-left"
-          style={{ background: "transparent", border: "none", padding: "4px 0", cursor: "pointer" }}
+          className="flex items-center gap-2 py-1 text-[13px] hover:opacity-80 w-full text-left"
+          style={{ background: "transparent", border: "none", padding: "6px 0", cursor: "pointer" }}
         >
           <span
             style={{
@@ -215,7 +215,7 @@ function GitHubSection() {
       {data.reviewRequested.length > 0 && (
         <>
           <div
-            className="t-mono uppercase mb-1"
+            className="t-mono uppercase mb-1.5"
             style={{
               fontSize: 9,
               color: "var(--c-github)",
@@ -230,7 +230,7 @@ function GitHubSection() {
               href={pr.url}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-1.5 py-1 text-[12.5px] hover:opacity-80"
+              className="flex items-center gap-1.5 py-1 text-[13px] hover:opacity-80"
             >
               <Branch s={11} c="var(--c-github)" />
               <span className="t-mono text-fg-soft" style={{ fontSize: 10 }}>
@@ -249,7 +249,7 @@ function GitHubSection() {
       {data.authored.length > 0 && (
         <>
           <div
-            className="t-mono uppercase mt-3 mb-1 text-fg-soft"
+            className="t-mono uppercase mt-4 mb-1.5 text-fg-soft"
             style={{ fontSize: 9, letterSpacing: "0.08em" }}
           >
             Yours
@@ -260,7 +260,7 @@ function GitHubSection() {
               href={pr.url}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-1.5 py-1 text-[12.5px] hover:opacity-80"
+              className="flex items-center gap-1.5 py-1 text-[13px] hover:opacity-80"
             >
               <Branch s={11} c="var(--c-github)" />
               <span className="t-mono text-fg-soft" style={{ fontSize: 10 }}>

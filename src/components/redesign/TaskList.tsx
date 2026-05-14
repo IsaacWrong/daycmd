@@ -79,7 +79,7 @@ function TaskRow({
 
   if (editing) {
     return (
-      <div className="flex items-center gap-3 py-2 text-[14px]">
+      <div className="flex items-center gap-3 py-2.5 text-[14px]">
         <button
           type="button"
           className={`check ${t.done ? "done" : ""}`}
@@ -298,7 +298,7 @@ function NewTaskRow({ projectFilter }: { projectFilter?: string }) {
   return (
     <form
       onSubmit={submit}
-      className="flex items-center gap-3 py-2 text-[14px]"
+      className="flex items-center gap-3 py-2.5 text-[14px]"
       style={{ borderTop: "1px dashed var(--rule)", marginTop: 10, paddingTop: 12 }}
     >
       <span

@@ -121,7 +121,7 @@ export function Masthead({
 
   return (
     <div
-      className="dimmable flex items-center gap-[22px] px-12 pt-[22px] pb-[18px]"
+      className="dimmable flex items-center gap-[28px] px-14 pt-[28px] pb-[22px]"
       style={{ borderBottom: "1px solid var(--rule)" }}
     >
       <div className="flex items-center gap-3.5">
