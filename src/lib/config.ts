@@ -14,6 +14,8 @@ const Env = z.object({
     .optional()
     .default("http://localhost:3000/api/auth/google/callback"),
   ANTHROPIC_API_KEY: z.string().optional().default(""),
+  POSTHOG_API_KEY: z.string().optional().default(""),
+  POSTHOG_BASE_URL: z.string().optional().default("https://us.posthog.com"),
 });
 
 export const env = Env.parse(process.env);

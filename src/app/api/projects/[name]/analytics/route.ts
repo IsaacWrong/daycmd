@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
+import { readProject } from "@/lib/projects";
+import { getPosthogStats } from "@/lib/posthog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export type AnalyticsProjectStats = {
+  source: "posthog" | "mock";
   dau: number;
   dauDelta: string;
   sessionsPerUser: number;
   retentionD7: number;
   crashFree: number;
   dauTrend: number[];
+  error?: string;
 };
 
 function mockStats(name: string): AnalyticsProjectStats {
@@ -24,6 +28,7 @@ function mockStats(name: string): AnalyticsProjectStats {
     Math.max(0, base + i * 25 + Math.floor(rand() * 80) - 30),
   );
   return {
+    source: "mock",
     dau: trend[trend.length - 1],
     dauDelta: "+4.1%",
     sessionsPerUser: 3.4,
@@ -39,5 +44,22 @@ export async function GET(
 ) {
   const { name } = await ctx.params;
   const decoded = decodeURIComponent(name);
-  return NextResponse.json({ source: "mock", ...mockStats(decoded) });
+
+  try {
+    const project = await readProject(decoded);
+    const raw = project.frontmatter.posthog_project_id;
+    const projectId =
+      typeof raw === "string" || typeof raw === "number" ? String(raw) : "";
+    if (projectId) {
+      const stats = await getPosthogStats(projectId);
+      if ("error" in stats) {
+        return NextResponse.json({ ...mockStats(decoded), error: stats.error });
+      }
+      return NextResponse.json(stats);
+    }
+  } catch {
+    // fall through to mock
+  }
+
+  return NextResponse.json(mockStats(decoded));
 }

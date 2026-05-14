@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 const Body = z.object({
   start: z.string().datetime(),
   end: z.string().datetime(),
+  note: z.string().max(500).optional(),
 });
 
 export async function POST(
@@ -25,7 +26,7 @@ export async function POST(
     );
   }
   try {
-    const entry = buildTimeEntry(parsed.data.start, parsed.data.end);
+    const entry = buildTimeEntry(parsed.data.start, parsed.data.end, parsed.data.note);
     if (entry.minutes === 0) {
       return NextResponse.json(
         { error: "duration zero", entry },

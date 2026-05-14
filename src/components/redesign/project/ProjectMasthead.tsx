@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePoll } from "@/lib/hooks";
+import { ProjectTimer } from "./ProjectTimer";
 
 type ProjectDTO = {
   name: string;
@@ -52,13 +53,20 @@ export function ProjectMasthead({ name }: { name: string }) {
             ← Daycmd
           </Link>
           <span style={{ opacity: 0.5 }}>/</span>
-          <span>projects</span>
+          <Link href="/projects" className="hover:text-fg">
+            projects
+          </Link>
           <span style={{ opacity: 0.5 }}>/</span>
           <span style={{ color: "var(--fg)" }}>{name}</span>
         </div>
       </div>
 
       <span className="flex-1" />
+
+      <ProjectTimer name={name} />
+      <span
+        style={{ width: 1, height: 14, background: "var(--rule)", flexShrink: 0 }}
+      />
 
       <div
         className="flex items-center gap-2"

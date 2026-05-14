@@ -33,6 +33,7 @@ export type TimeEntry = {
   start: string;
   end: string;
   minutes: number;
+  note?: string;
 };
 
 function projectFileName(name: string): string {
@@ -136,7 +137,8 @@ function appendToSection(body: string, heading: string, line: string): string {
 
 export async function appendLogEntry(name: string, entry: TimeEntry): Promise<Project> {
   const project = await readProject(name);
-  const line = `- ${entry.date} ${entry.start}–${entry.end} (${entry.minutes}m)`;
+  const noteSuffix = entry.note?.trim() ? ` — ${entry.note.trim().replace(/\s+/g, " ")}` : "";
+  const line = `- ${entry.date} ${entry.start}–${entry.end} (${entry.minutes}m)${noteSuffix}`;
   const nextBody = appendToSection(project.body, "Log", line);
   const weeklyHours = computeWeeklyHoursFromBody(nextBody);
   const nextFm = { ...project.frontmatter, weekly_hours: weeklyHours };
@@ -165,7 +167,7 @@ export async function appendUnfiledIdea(text: string, now = new Date()): Promise
   return INBOX_PATH;
 }
 
-const LOG_LINE = /^-\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})[–-](\d{2}:\d{2})\s+\((\d+)m\)/;
+const LOG_LINE = /^-\s+(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})[–-](\d{2}:\d{2})\s+\((\d+)m\)(?:\s+[—-]\s+(.*))?/;
 
 export function parseLogEntries(body: string): TimeEntry[] {
   const range = findSectionRange(body, "Log");
@@ -175,7 +177,14 @@ export function parseLogEntries(body: string): TimeEntry[] {
   for (const l of lines) {
     const m = l.match(LOG_LINE);
     if (!m) continue;
-    entries.push({ date: m[1], start: m[2], end: m[3], minutes: Number(m[4]) });
+    const entry: TimeEntry = {
+      date: m[1],
+      start: m[2],
+      end: m[3],
+      minutes: Number(m[4]),
+    };
+    if (m[5]) entry.note = m[5].trim();
+    entries.push(entry);
   }
   return entries;
 }
@@ -190,16 +199,22 @@ export function computeWeeklyHoursFromBody(body: string, now = new Date()): numb
   return Math.round((minutes / 60) * 100) / 100;
 }
 
-export function buildTimeEntry(startISO: string, endISO: string): TimeEntry {
+export function buildTimeEntry(
+  startISO: string,
+  endISO: string,
+  note?: string,
+): TimeEntry {
   const start = new Date(startISO);
   const end = new Date(endISO);
   const minutes = Math.max(0, differenceInMinutes(end, start));
-  return {
+  const entry: TimeEntry = {
     date: format(start, "yyyy-MM-dd"),
     start: format(start, "HH:mm"),
     end: format(end, "HH:mm"),
     minutes,
   };
+  if (note?.trim()) entry.note = note.trim();
+  return entry;
 }
 
 export async function createProject(
