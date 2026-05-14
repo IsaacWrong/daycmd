@@ -201,6 +201,61 @@ export function SkillStrip({
   );
 }
 
+function Bubble({
+  m,
+  animate,
+  busy,
+}: {
+  m: Msg;
+  animate: boolean;
+  busy: boolean;
+}) {
+  const isUser = m.role === "user";
+  return (
+    <div
+      className={animate ? "agent-bubble-enter" : undefined}
+      style={{
+        display: "flex",
+        justifyContent: isUser ? "flex-end" : "flex-start",
+      }}
+    >
+      <div className={isUser ? "agent-bubble-user" : "agent-bubble-claude"}>
+        {m.tools && m.tools.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-1.5">
+            {m.tools.map((t, ti) => (
+              <span
+                key={ti}
+                className="t-mono"
+                style={{
+                  fontSize: 10,
+                  padding: "1px 6px",
+                  borderRadius: 4,
+                  color:
+                    t.ok === undefined
+                      ? "var(--fg-soft)"
+                      : t.ok
+                        ? "var(--c-good)"
+                        : "var(--c-error)",
+                  background: "oklch(from var(--fg) l c h / 0.06)",
+                }}
+              >
+                {t.ok === undefined ? "·" : t.ok ? "✓" : "✗"} {t.name}
+              </span>
+            ))}
+          </div>
+        )}
+        {isUser ? (
+          <div className="whitespace-pre-wrap">{m.content}</div>
+        ) : m.content ? (
+          <Markdown>{m.content}</Markdown>
+        ) : busy ? (
+          <span className="text-fg-soft">…</span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function AgentBar({
   variant = "wide",
   category,
@@ -219,7 +274,6 @@ export function AgentBar({
   const agent = useAgent(category);
   const [input, setInput] = useState("");
   const [mounted, setMounted] = useState(false);
-  const [expanded, setExpanded] = useState(false);
   const [catOpen, setCatOpen] = useState(false);
   const [pending, setPending] = useState<Attachment[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
@@ -237,23 +291,25 @@ export function AgentBar({
   const catMenuRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const barWrapRef = useRef<HTMLDivElement>(null);
+  const bubblesScrollRef = useRef<HTMLDivElement>(null);
+  const bubblesBaselineRef = useRef(0);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (expanded) {
-      const id = requestAnimationFrame(() => inputRef.current?.focus());
-      return () => cancelAnimationFrame(id);
-    }
-  }, [expanded]);
-
-  useEffect(() => {
     if (variant !== "wide" || !barOpen) return;
     const id = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [variant, barOpen]);
+
+  useEffect(() => {
+    if (!barOpen) return;
+    const el = bubblesScrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [agent.messages.length, barOpen]);
 
   useEffect(() => {
     if (variant !== "wide") return;
@@ -266,6 +322,7 @@ export function AgentBar({
       setBarMounted(true);
       setBarClosing(false);
       setBarSettled(false);
+      bubblesBaselineRef.current = agent.messages.length;
       return;
     }
     if (!barMounted) return;
@@ -283,12 +340,11 @@ export function AgentBar({
     function onDocMouseDown(e: MouseEvent) {
       const t = e.target as Node;
       if (barWrapRef.current?.contains(t)) return;
-      if (expanded) return;
       if (catOpen) return;
       setBarOpen(false);
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !expanded && !catOpen) setBarOpen(false);
+      if (e.key === "Escape" && !catOpen) setBarOpen(false);
     }
     document.addEventListener("mousedown", onDocMouseDown);
     document.addEventListener("keydown", onKey);
@@ -296,16 +352,15 @@ export function AgentBar({
       document.removeEventListener("mousedown", onDocMouseDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [variant, barOpen, expanded, catOpen]);
+  }, [variant, barOpen, catOpen]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const meta = e.metaKey || e.ctrlKey;
       if (meta && e.key.toLowerCase() === "j") {
         e.preventDefault();
-        setExpanded((v) => !v);
+        setBarOpen(!barOpen);
       }
-      if (e.key === "Escape") setExpanded(false);
       // ⌘1..⌘6 — skill hotkeys
       if (meta && /^[1-6]$/.test(e.key)) {
         const idx = parseInt(e.key, 10) - 1;
@@ -316,7 +371,6 @@ export function AgentBar({
         if (skill) {
           e.preventDefault();
           agent.send(skill.prompt, { skill });
-          setExpanded(true);
           setBarOpen(true);
         }
       }
@@ -348,7 +402,6 @@ export function AgentBar({
     function handler(e: Event) {
       const skill = (e as CustomEvent<SkillDef>).detail;
       if (!skill) return;
-      setExpanded(true);
       setBarOpen(true);
       agent.send(skill.prompt, { skill });
     }
@@ -570,137 +623,24 @@ export function AgentBar({
     );
   }
 
-  // Wide variant — bottom dock + ⌘J drawer
-  const drawer =
-    expanded && mounted
+  // Wide variant — bottom dock with floating agent overlay
+  const backdrop =
+    barMounted && mounted
       ? createPortal(
-          <div className="fixed inset-0 z-40 flex">
-            <div
-              className="flex-1"
-              style={{ background: "oklch(0 0 0 / 0.5)", backdropFilter: "blur(4px)" }}
-              onClick={() => setExpanded(false)}
-            />
-            <div
-              className="w-full flex flex-col"
-              style={{
-                maxWidth: 760,
-                background: "var(--bg-a)",
-                borderLeft: "1px solid var(--rule)",
-                padding: 24,
-                boxShadow: "0 30px 80px -30px oklch(0 0 0 / 0.35)",
-              }}
-            >
-              <header className="flex items-center gap-3 mb-3">
-                <span className="t-eyebrow">Agent · {agent.category}</span>
-                <span className="flex-1" />
-                <select
-                  value={agent.category}
-                  onChange={(e) => agent.setCategory(e.target.value)}
-                  disabled={agent.busy}
-                  className="t-mono"
-                  style={{
-                    background: "transparent",
-                    border: "1px solid var(--rule)",
-                    color: "var(--fg)",
-                    fontSize: 11,
-                    padding: "2px 6px",
-                    borderRadius: 4,
-                  }}
-                >
-                  {agent.categories.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-                {agent.messages.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={agent.clear}
-                    className="t-mono text-fg-soft hover:text-fg"
-                    style={{
-                      background: "transparent",
-                      border: 0,
-                      fontSize: 11,
-                      cursor: "pointer",
-                    }}
-                    title="Clear conversation"
-                  >
-                    clear
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setExpanded(false)}
-                  className="t-mono text-fg-soft hover:text-fg"
-                  style={{
-                    background: "transparent",
-                    border: 0,
-                    fontSize: 11,
-                    cursor: "pointer",
-                  }}
-                >
-                  close
-                </button>
-              </header>
-              <ThreadView messages={agent.messages} busy={agent.busy} />
-              {agent.error && (
-                <p className="text-[12px] mt-2" style={{ color: "var(--c-error)" }}>
-                  {agent.error}
-                </p>
-              )}
-              <form onSubmit={submit} className="mt-3.5">
-                {attachmentChips}
-                {attachError && (
-                  <p className="text-[11px] mb-1" style={{ color: "var(--c-error)" }}>
-                    {attachError}
-                  </p>
-                )}
-                <div
-                  className="glass flex items-center gap-3"
-                  style={{ padding: "12px 16px", borderRadius: 14, cursor: "text" }}
-                  onClick={focusInput}
-                >
-                  {inputField}
-                  {!agent.busy && (
-                    <button
-                      type="button"
-                      onClick={openPicker}
-                      title="Attach files"
-                      className="inline-flex items-center text-fg-soft hover:text-fg"
-                      style={{
-                        background: "transparent",
-                        border: 0,
-                        padding: 0,
-                        cursor: "pointer",
-                      }}
-                    >
-                      <Paperclip s={14} />
-                    </button>
-                  )}
-                  {agent.busy ? (
-                    <button
-                      type="button"
-                      onClick={agent.stop}
-                      className="t-mono text-[11px]"
-                      style={{
-                        padding: "2px 8px",
-                        border: "1px solid var(--rule)",
-                        borderRadius: 4,
-                        background: "transparent",
-                        color: "var(--c-error)",
-                        cursor: "pointer",
-                      }}
-                    >
-                      stop
-                    </button>
-                  ) : (
-                    <span className="kbd">⌘J</span>
-                  )}
-                </div>
-              </form>
-            </div>
-          </div>,
+          <div
+            onClick={() => setBarOpen(false)}
+            className={barClosing ? "agent-backdrop-exit" : "agent-backdrop-enter"}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 40,
+              background: "oklch(0 0 0 / 0.32)",
+              backdropFilter: "blur(10px)",
+              WebkitBackdropFilter: "blur(10px)",
+              cursor: "pointer",
+            }}
+            aria-hidden="true"
+          />,
           document.body,
         )
       : null;
@@ -713,10 +653,93 @@ export function AgentBar({
         style={{
           position: "relative",
           display: "flex",
-          justifyContent: "flex-end",
+          flexDirection: "column",
+          alignItems: "stretch",
+          gap: 12,
           width: "100%",
+          minHeight: 0,
+          flex: barMounted ? "1 1 auto" : "0 0 auto",
         }}
       >
+      {barMounted && agent.messages.length > 0 && (
+        <div
+          ref={bubblesScrollRef}
+          className={`scroll ${barClosing ? "agent-overlay-exit" : "agent-overlay-enter"}`}
+          style={{
+            flex: "1 1 auto",
+            minHeight: 0,
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            padding: "4px 4px",
+          }}
+        >
+          {agent.messages.map((m, i) => (
+            <Bubble
+              key={i}
+              m={m}
+              animate={i >= bubblesBaselineRef.current}
+              busy={agent.busy && i === agent.messages.length - 1}
+            />
+          ))}
+        </div>
+      )}
+      {barMounted && (
+        <div
+          className={barClosing ? "agent-overlay-exit" : "agent-overlay-enter"}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "0 4px",
+            color: "var(--fg-soft)",
+            fontSize: 11,
+          }}
+        >
+          <span className="t-eyebrow">Agent · {agent.category}</span>
+          <span style={{ flex: 1 }} />
+          {agent.messages.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                agent.clear();
+                bubblesBaselineRef.current = 0;
+              }}
+              className="t-mono text-fg-soft hover:text-fg"
+              style={{
+                background: "transparent",
+                border: 0,
+                fontSize: 11,
+                cursor: "pointer",
+                padding: 0,
+              }}
+              title="Clear conversation"
+            >
+              clear
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setBarOpen(false)}
+            className="t-mono text-fg-soft hover:text-fg"
+            style={{
+              background: "transparent",
+              border: 0,
+              fontSize: 11,
+              cursor: "pointer",
+              padding: 0,
+            }}
+          >
+            close
+          </button>
+        </div>
+      )}
+      {barMounted && (
+        <div className={barClosing ? "agent-overlay-exit" : "agent-overlay-enter"}>
+          <SkillStrip category={category} />
+        </div>
+      )}
       {!barOpen && (
         <button
           type="button"
@@ -726,6 +749,7 @@ export function AgentBar({
           style={
             {
               position: barMounted ? "absolute" : "static",
+              alignSelf: "flex-end",
               right: 0,
               bottom: 0,
               width: 62,
@@ -987,7 +1011,7 @@ export function AgentBar({
       </form>
       )}
       </div>
-      {drawer}
+      {backdrop}
     </>
   );
 }

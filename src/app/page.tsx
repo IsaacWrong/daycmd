@@ -16,7 +16,7 @@ import { NowHero } from "@/components/redesign/NowHero";
 import { TaskList } from "@/components/redesign/TaskList";
 import { DailyNotePreview } from "@/components/redesign/DailyNotePreview";
 import { RightStreams } from "@/components/redesign/RightStreams";
-import { AgentBar, SkillStrip } from "@/components/redesign/AgentBar";
+import { AgentBar } from "@/components/redesign/AgentBar";
 import { CalendarOverlayProvider } from "@/components/calendar/CalendarOverlayProvider";
 import { MailOverlayProvider } from "@/components/mail/MailOverlayProvider";
 
@@ -24,24 +24,7 @@ export default function Home() {
   const tod = useTod();
   const [focus, toggleFocus] = useFocusMode();
   const [agentOpen, setAgentOpen] = useState(false);
-  const [stripMounted, setStripMounted] = useState(false);
-  const [stripClosing, setStripClosing] = useState(false);
   const router = useRouter();
-
-  useEffect(() => {
-    if (agentOpen) {
-      setStripMounted(true);
-      setStripClosing(false);
-      return;
-    }
-    if (!stripMounted) return;
-    setStripClosing(true);
-    const id = setTimeout(() => {
-      setStripMounted(false);
-      setStripClosing(false);
-    }, 260);
-    return () => clearTimeout(id);
-  }, [agentOpen]);
 
   // Bounce to /setup if VAULT_PATH or ANTHROPIC_API_KEY is missing.
   useEffect(() => {
@@ -108,27 +91,27 @@ export default function Home() {
           left: 56,
           right: 56,
           bottom: 28,
-          zIndex: 5,
+          top: agentOpen ? 56 : undefined,
+          zIndex: 50,
           display: "flex",
           flexDirection: "column",
+          justifyContent: "flex-end",
           alignItems: "stretch",
           gap: 16,
           pointerEvents: "none",
         }}
       >
-        {stripMounted && (
-          <div
-            className={stripClosing ? "agent-strip-exit" : "agent-strip-enter"}
-            style={{
-              opacity: focus ? 1 : 0.85,
-              transition: "opacity 320ms ease",
-              pointerEvents: "auto",
-            }}
-          >
-            <SkillStrip />
-          </div>
-        )}
-        <div style={{ pointerEvents: "auto", width: "100%" }}>
+        <div
+          style={{
+            pointerEvents: "auto",
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            flex: agentOpen ? "1 1 auto" : "0 0 auto",
+            minHeight: 0,
+            justifyContent: "flex-end",
+          }}
+        >
           <AgentBar
             variant="wide"
             focus={focus}
