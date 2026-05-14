@@ -32,31 +32,65 @@ function findNow(events: CalEvent[], ts: number): CalEvent | null {
 }
 
 function DayStrip({ events }: { events: CalEvent[] }) {
-  const startH = 9;
-  const endH = 22;
-  const span = endH - startH;
-  const now = new Date();
-  const nowH = now.getHours() + now.getMinutes() / 60;
-  const nowPct = Math.max(0, Math.min(100, ((nowH - startH) / span) * 100));
+  const [nowMs, setNowMs] = useState<number | null>(null);
+  useEffect(() => {
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  if (nowMs === null) {
+    return (
+      <div
+        style={{
+          height: 36,
+          borderRadius: 8,
+          background: "oklch(from var(--fg) l c h / 0.04)",
+          border: "1px solid var(--rule)",
+        }}
+      />
+    );
+  }
+  return <DayStripInner events={events} nowMs={nowMs} />;
+}
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+function DayStripInner({ events, nowMs }: { events: CalEvent[]; nowMs: number }) {
+  const SPAN_HOURS = 8;
+  const spanMs = SPAN_HOURS * 3600 * 1000;
+  const endMs = nowMs + spanMs;
 
   const blocks = events
     .filter((e) => !e.allDay)
     .map((e, i) => {
-      const s = new Date(e.start);
-      const en = new Date(e.end);
-      if (s >= tomorrow || en <= today) return null;
-      const sH = Math.max(s.getHours() + s.getMinutes() / 60, startH);
-      const eH = Math.min(en.getHours() + en.getMinutes() / 60 || endH, endH);
-      if (eH <= sH) return null;
+      const s = new Date(e.start).getTime();
+      const en = new Date(e.end).getTime();
+      if (Number.isNaN(s) || Number.isNaN(en)) return null;
+      if (en <= nowMs || s >= endMs) return null;
+      const startMs = Math.max(s, nowMs);
+      const stopMs = Math.min(en, endMs);
+      if (stopMs <= startMs) return null;
       const color = SRC_BY_INDEX[i % SRC_BY_INDEX.length];
-      return { sH, eH, label: e.summary, color };
+      return {
+        leftPct: ((startMs - nowMs) / spanMs) * 100,
+        widthPct: ((stopMs - startMs) / spanMs) * 100,
+        label: e.summary,
+        color,
+      };
     })
     .filter((b): b is NonNullable<typeof b> => b !== null);
+
+  const nowDate = new Date(nowMs);
+  const firstHour = new Date(nowDate);
+  firstHour.setMinutes(0, 0, 0);
+  firstHour.setHours(firstHour.getHours() + 1);
+  const ticks: { pct: number; label: string }[] = [];
+  for (let t = firstHour.getTime(); t <= endMs; t += 3600 * 1000) {
+    const pct = ((t - nowMs) / spanMs) * 100;
+    const d = new Date(t);
+    ticks.push({
+      pct,
+      label: d.toLocaleTimeString([], { hour: "numeric" }).replace(" ", "").toLowerCase(),
+    });
+  }
 
   return (
     <div>
@@ -69,77 +103,90 @@ function DayStrip({ events }: { events: CalEvent[] }) {
           border: "1px solid var(--rule)",
         }}
       >
-        {Array.from({ length: span + 1 }, (_, i) => (
+        {ticks.map((tk, i) => (
           <div
             key={i}
             className="absolute top-0 bottom-0"
             style={{
-              left: `${(i / span) * 100}%`,
+              left: `${tk.pct}%`,
               width: 1,
-              background:
-                i % 3 === 0 ? "oklch(from var(--fg) l c h / 0.08)" : "transparent",
+              background: "oklch(from var(--fg) l c h / 0.08)",
             }}
           />
         ))}
 
-        {blocks.map((b, i) => {
-          const left = ((b.sH - startH) / span) * 100;
-          const width = ((b.eH - b.sH) / span) * 100;
-          return (
-            <div
-              key={i}
-              title={b.label}
-              className="absolute flex items-center overflow-hidden whitespace-nowrap"
-              style={{
-                top: 6,
-                bottom: 6,
-                left: `${left}%`,
-                width: `calc(${width}% - 2px)`,
-                borderRadius: 4,
-                background: `oklch(from var(--c-${b.color}) l c h / 0.30)`,
-                borderLeft: `2px solid var(--c-${b.color})`,
-                padding: "0 6px",
-                fontSize: 10.5,
-                color: "var(--fg)",
-                fontWeight: 500,
-                letterSpacing: "-0.005em",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {b.label}
-            </div>
-          );
-        })}
+        {blocks.map((b, i) => (
+          <div
+            key={i}
+            title={b.label}
+            className="absolute flex items-center overflow-hidden whitespace-nowrap"
+            style={{
+              top: 6,
+              bottom: 6,
+              left: `${b.leftPct}%`,
+              width: `calc(${b.widthPct}% - 2px)`,
+              borderRadius: 4,
+              background: `oklch(from var(--c-${b.color}) l c h / 0.30)`,
+              borderLeft: `2px solid var(--c-${b.color})`,
+              padding: "0 6px",
+              fontSize: 10.5,
+              color: "var(--fg)",
+              fontWeight: 500,
+              letterSpacing: "-0.005em",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {b.label}
+          </div>
+        ))}
 
         <div
           className="absolute"
           style={{
             top: -3,
             bottom: -3,
-            left: `${nowPct}%`,
+            left: 0,
             width: 2,
             background: "var(--fg)",
-            boxShadow: "0 0 0 3px var(--bg-a)",
           }}
         />
         <div
           className="absolute rounded-full"
           style={{
-            top: -8,
-            left: `calc(${nowPct}% - 4px)`,
+            top: -4,
+            left: -4,
             width: 10,
             height: 10,
             background: "var(--fg)",
-            boxShadow: "0 0 0 3px var(--bg-a)",
           }}
         />
       </div>
-      <div className="t-mono flex justify-between mt-1.5 text-[10px] text-fg-soft">
-        <span>9a</span>
-        <span>12p</span>
-        <span>3p</span>
-        <span>6p</span>
-        <span>9p</span>
+      <div
+        className="relative t-mono mt-1.5 text-[10px] text-fg-soft"
+        style={{ height: 12 }}
+      >
+        <span
+          style={{
+            position: "absolute",
+            left: 0,
+            color: "var(--fg)",
+            fontWeight: 500,
+          }}
+        >
+          now
+        </span>
+        {ticks.map((tk, i) => (
+          <span
+            key={i}
+            style={{
+              position: "absolute",
+              left: `${tk.pct}%`,
+              transform: "translateX(-50%)",
+            }}
+          >
+            {tk.label}
+          </span>
+        ))}
       </div>
     </div>
   );

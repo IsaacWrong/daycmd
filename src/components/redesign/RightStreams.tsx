@@ -10,6 +10,9 @@ import type { ErrorRow } from "@/lib/errors";
 import type { CategoryStats } from "@/lib/kb";
 import { Branch, Envelope, Note } from "./Glyph";
 import { SectionMini } from "./Section";
+import { useCalendarOverlay } from "@/components/calendar/CalendarOverlayProvider";
+import { useMailOverlay } from "@/components/mail/MailOverlayProvider";
+import { parseEventTime } from "@/components/calendar/dates";
 
 type CalResp =
   | { events: CalEvent[]; configured: boolean; connected: boolean }
@@ -46,17 +49,17 @@ const BUCKET_LABEL: Record<Bucket, string> = {
 };
 
 function CalendarRow({ e }: { e: CalEvent }) {
+  const overlay = useCalendarOverlay();
   const start = new Date(e.start);
   const time = e.allDay
     ? "all day"
     : start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   return (
-    <a
+    <button
       key={`${e.calendar}-${e.id}`}
-      href={e.hangoutLink ?? e.url ?? "#"}
-      target="_blank"
-      rel="noreferrer"
-      className="flex items-center gap-2.5 py-1 text-[12.5px] hover:opacity-80"
+      onClick={() => overlay.openEvent(e)}
+      className="flex items-center gap-2.5 py-1 text-[12.5px] hover:opacity-80 w-full text-left"
+      style={{ background: "transparent", border: "none", padding: "4px 0", cursor: "pointer" }}
     >
       <span
         className="t-mono text-[11px] text-fg-soft"
@@ -71,17 +74,23 @@ function CalendarRow({ e }: { e: CalEvent }) {
       <span className="flex-1 truncate" style={{ letterSpacing: "-0.005em" }}>
         {e.summary}
       </span>
-    </a>
+    </button>
   );
 }
 
 function CalendarSection() {
   const { data } = usePoll<CalResp>("/api/calendar", 60_000);
   const events = data && "events" in data ? data.events : [];
-  const upcoming = events.filter((e) => new Date(e.end).getTime() > Date.now());
+  const upcoming = events.filter((e) => parseEventTime(e.end) > Date.now());
 
   const grouped: Record<Bucket, CalEvent[]> = { today: [], tomorrow: [], later: [] };
-  for (const e of upcoming) grouped[bucketOf(new Date(e.start))].push(e);
+  for (const e of upcoming) grouped[bucketOf(new Date(parseEventTime(e.start)))].push(e);
+  for (const b of BUCKET_ORDER) {
+    grouped[b].sort((a, b) => {
+      if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
+      return a.start < b.start ? -1 : a.start > b.start ? 1 : 0;
+    });
+  }
 
   // Cap total visible rows at 7, but always show at least 1 row from each
   // non-empty bucket so context isn't lost.
@@ -104,7 +113,7 @@ function CalendarSection() {
         const hidden = grouped[b].length - items.length;
         const subLabel =
           b === "later" && items[0]
-            ? `${BUCKET_LABEL[b]} · from ${format(new Date(items[0].start), "EEE MMM d")}`
+            ? `${BUCKET_LABEL[b]} · from ${format(new Date(parseEventTime(items[0].start)), "EEE MMM d")}`
             : BUCKET_LABEL[b];
         return (
           <div key={b} className="mb-1.5" style={{ marginTop: b === "today" ? 0 : 10 }}>
@@ -139,18 +148,18 @@ function CalendarSection() {
 }
 
 function InboxSection() {
+  const mail = useMailOverlay();
   const { data } = usePoll<GmailResp>("/api/gmail", 60_000);
   const messages = data && "messages" in data ? data.messages : [];
   const unread = messages.filter((m) => m.unread).length;
   return (
     <SectionMini title="Inbox" count={unread} accent="gmail">
       {messages.slice(0, 5).map((m) => (
-        <a
+        <button
           key={m.id}
-          href={m.url}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-2 py-1 text-[12.5px] hover:opacity-80"
+          onClick={() => mail.openThread(m.threadId)}
+          className="flex items-center gap-2 py-1 text-[12.5px] hover:opacity-80 w-full text-left"
+          style={{ background: "transparent", border: "none", padding: "4px 0", cursor: "pointer" }}
         >
           <span
             style={{
@@ -180,7 +189,7 @@ function InboxSection() {
               {m.subject}
             </div>
           </div>
-        </a>
+        </button>
       ))}
       {messages.length === 0 && (
         <p className="text-[12px] text-fg-soft py-1">Inbox empty.</p>

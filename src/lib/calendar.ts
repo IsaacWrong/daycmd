@@ -3,15 +3,36 @@ import { getClient } from "./google";
 
 export type CalEvent = {
   id: string;
+  calendarId: string;
   summary: string;
   start: string;
   end: string;
   allDay: boolean;
   location: string | null;
+  description: string | null;
   url: string | null;
   hangoutLink: string | null;
   calendar: string;
   calendarColor: string | null;
+};
+
+export type CalendarInfo = {
+  id: string;
+  summary: string;
+  color: string | null;
+  primary: boolean;
+  accessRole: string;
+  writable: boolean;
+};
+
+export type EventInput = {
+  summary?: string;
+  start?: string;
+  end?: string;
+  allDay?: boolean;
+  description?: string;
+  location?: string;
+  attendees?: string[];
 };
 
 async function calClient() {
@@ -20,23 +41,51 @@ async function calClient() {
   return google.calendar({ version: "v3", auth });
 }
 
+function buildTimeField(value: string, allDay: boolean) {
+  return allDay ? { date: value } : { dateTime: value };
+}
+
+export async function listCalendars(): Promise<CalendarInfo[]> {
+  const cal = await calClient();
+  const res = await cal.calendarList.list({
+    minAccessRole: "reader",
+    showHidden: false,
+  });
+  return (res.data.items ?? [])
+    .filter((c) => c.selected !== false && !!c.id)
+    .map((c) => {
+      const role = c.accessRole ?? "reader";
+      return {
+        id: c.id!,
+        summary: c.summary ?? c.summaryOverride ?? c.id!,
+        color: c.backgroundColor ?? null,
+        primary: !!c.primary,
+        accessRole: role,
+        writable: role === "owner" || role === "writer",
+      };
+    });
+}
+
 export async function createEvent(input: {
+  calendarId?: string;
   summary: string;
   start: string;
   end: string;
+  allDay?: boolean;
   description?: string;
   location?: string;
   attendees?: string[];
 }): Promise<{ ok: true; id: string; url: string }> {
   const cal = await calClient();
+  const allDay = !!input.allDay;
   const res = await cal.events.insert({
-    calendarId: "primary",
+    calendarId: input.calendarId ?? "primary",
     requestBody: {
       summary: input.summary,
       description: input.description,
       location: input.location,
-      start: { dateTime: input.start },
-      end: { dateTime: input.end },
+      start: buildTimeField(input.start, allDay),
+      end: buildTimeField(input.end, allDay),
       attendees: input.attendees?.map((email) => ({ email })),
     },
   });
@@ -47,37 +96,74 @@ export async function createEvent(input: {
   };
 }
 
-export async function rescheduleEvent(input: {
+export async function updateEvent(input: {
+  calendarId?: string;
   eventId: string;
-  start: string;
-  end: string;
+  patch: EventInput;
 }): Promise<{ ok: true; id: string }> {
   const cal = await calClient();
+  const { patch } = input;
+  const allDay = !!patch.allDay;
+  const requestBody: Record<string, unknown> = {};
+  if (patch.summary !== undefined) requestBody.summary = patch.summary;
+  if (patch.description !== undefined) requestBody.description = patch.description;
+  if (patch.location !== undefined) requestBody.location = patch.location;
+  if (patch.start !== undefined) requestBody.start = buildTimeField(patch.start, allDay);
+  if (patch.end !== undefined) requestBody.end = buildTimeField(patch.end, allDay);
+  if (patch.attendees !== undefined)
+    requestBody.attendees = patch.attendees.map((email) => ({ email }));
   const res = await cal.events.patch({
-    calendarId: "primary",
+    calendarId: input.calendarId ?? "primary",
     eventId: input.eventId,
-    requestBody: {
-      start: { dateTime: input.start },
-      end: { dateTime: input.end },
-    },
+    requestBody,
   });
   return { ok: true, id: res.data.id ?? "" };
 }
 
-export async function cancelEvent(eventId: string): Promise<{ ok: true }> {
+export async function rescheduleEvent(input: {
+  calendarId?: string;
+  eventId: string;
+  start: string;
+  end: string;
+  allDay?: boolean;
+}): Promise<{ ok: true; id: string }> {
+  return updateEvent({
+    calendarId: input.calendarId,
+    eventId: input.eventId,
+    patch: { start: input.start, end: input.end, allDay: input.allDay },
+  });
+}
+
+export async function cancelEvent(
+  eventId: string,
+  calendarId: string = "primary",
+): Promise<{ ok: true }> {
   const cal = await calClient();
-  await cal.events.delete({ calendarId: "primary", eventId });
+  await cal.events.delete({ calendarId, eventId });
   return { ok: true };
 }
 
-export async function getEvents(hoursAhead = 36): Promise<CalEvent[]> {
+export async function getEvents(
+  rangeOrHours:
+    | number
+    | { from: string; to: string; max?: number } = 36,
+): Promise<CalEvent[]> {
   const cal = await calClient();
 
-  const now = new Date();
-  const end = new Date(now.getTime() + hoursAhead * 3600 * 1000);
+  let timeMin: string;
+  let timeMax: string;
+  let max = 250;
+  if (typeof rangeOrHours === "number") {
+    const now = new Date();
+    timeMin = now.toISOString();
+    timeMax = new Date(now.getTime() + rangeOrHours * 3600 * 1000).toISOString();
+    max = 50;
+  } else {
+    timeMin = rangeOrHours.from;
+    timeMax = rangeOrHours.to;
+    if (rangeOrHours.max) max = rangeOrHours.max;
+  }
 
-  // List every calendar user has access to (own + shared + subscribed).
-  // calendar.readonly scope is sufficient.
   const listRes = await cal.calendarList.list({
     minAccessRole: "reader",
     showHidden: false,
@@ -93,22 +179,24 @@ export async function getEvents(hoursAhead = 36): Promise<CalEvent[]> {
       try {
         const r = await cal.events.list({
           calendarId: id,
-          timeMin: now.toISOString(),
-          timeMax: end.toISOString(),
+          timeMin,
+          timeMax,
           singleEvents: true,
           orderBy: "startTime",
-          maxResults: 50,
+          maxResults: max,
         });
         return (r.data.items ?? []).map((e): CalEvent => {
           const start = e.start?.dateTime ?? e.start?.date ?? "";
           const endT = e.end?.dateTime ?? e.end?.date ?? "";
           return {
             id: e.id ?? "",
+            calendarId: id,
             summary: e.summary ?? "(no title)",
             start,
             end: endT,
             allDay: !e.start?.dateTime,
             location: e.location ?? null,
+            description: e.description ?? null,
             url: e.htmlLink ?? null,
             hangoutLink: e.hangoutLink ?? null,
             calendar: c.summary ?? c.summaryOverride ?? id,
@@ -127,5 +215,5 @@ export async function getEvents(hoursAhead = 36): Promise<CalEvent[]> {
 
   const all = perCal.flat();
   all.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
-  return all.slice(0, 50);
+  return typeof rangeOrHours === "number" ? all.slice(0, 50) : all;
 }

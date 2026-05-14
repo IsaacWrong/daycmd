@@ -213,3 +213,334 @@ button { font-family: inherit; }
   border-radius: 999px;
 }
 .scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* ── Calendar overlay ───────────────────────────────────────────── */
+.cal-icon-btn {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--fg-soft);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.cal-icon-btn:hover {
+  background: oklch(from var(--fg) l c h / 0.06);
+  color: var(--fg);
+}
+.cal-pill {
+  height: 28px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.cal-pill:hover { background: oklch(from var(--fg) l c h / 0.06); }
+.cal-seg-btn {
+  height: 24px;
+  padding: 0 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--fg-soft);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.cal-seg-btn:hover { color: var(--fg); }
+.cal-seg-btn[data-active="true"] {
+  background: oklch(from var(--fg) l c h / 0.08);
+  color: var(--fg);
+}
+.cal-primary-btn {
+  height: 28px;
+  padding: 0 12px;
+  background: var(--fg);
+  color: var(--bg-a);
+  border: none;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+.cal-primary-btn:hover { opacity: 0.85; }
+.cal-cell {
+  background: var(--bg-b);
+  transition: background 100ms ease;
+}
+.cal-cell:hover {
+  background: oklch(from var(--fg) l c h / 0.03);
+}
+.cal-chip {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: left;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--fg);
+  transition: filter 100ms ease;
+}
+.cal-chip:hover { filter: brightness(1.1); }
+.cal-chip .truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cal-field-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-soft);
+}
+.cal-input {
+  background: oklch(from var(--fg) l c h / 0.04);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  padding: 7px 9px;
+  font-size: 13px;
+  color: var(--fg);
+  outline: none;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.cal-input:focus {
+  background: oklch(from var(--fg) l c h / 0.06);
+  border-color: var(--fg-soft);
+}
+.cal-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg-soft);
+  cursor: pointer;
+}
+.cal-danger-btn {
+  height: 28px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  color: var(--c-error, #c33);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.cal-danger-btn:hover {
+  background: color-mix(in srgb, var(--c-error, #c33) 8%, transparent);
+}
+.cal-block {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: left;
+  border: none;
+  border-radius: 5px;
+  padding: 3px 6px 4px;
+  cursor: pointer;
+  color: var(--fg);
+  overflow: hidden;
+  transition: filter 100ms ease;
+}
+.cal-block:hover { filter: brightness(1.08); }
+.cal-block-title {
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-block-time {
+  font-size: 10px;
+  color: var(--fg-soft);
+  margin-top: 1px;
+}
+
+/* ── Mail overlay ───────────────────────────────────────────────── */
+.mail-row {
+  width: 100%;
+  text-align: left;
+  display: block;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.mail-row:hover { background: oklch(from var(--fg) l c h / 0.04); }
+.mail-row[data-selected="true"] {
+  background: oklch(from var(--c-gmail) l c h / 0.10);
+}
+.mail-row-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+.mail-row-from {
+  font-size: 12.5px;
+  color: var(--fg-soft);
+  font-weight: 400;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mail-row[data-unread="true"] .mail-row-from {
+  color: var(--fg);
+  font-weight: 600;
+}
+.mail-row-count {
+  font-size: 10px;
+  color: var(--fg-soft);
+  padding: 0 4px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+}
+.mail-row-date {
+  font-size: 10.5px;
+  color: var(--fg-soft);
+  flex-shrink: 0;
+}
+.mail-row[data-unread="true"] .mail-row-date {
+  color: var(--c-gmail);
+  font-weight: 500;
+}
+.mail-row-subject {
+  font-size: 12.5px;
+  color: var(--fg-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 1px;
+}
+.mail-row[data-unread="true"] .mail-row-subject {
+  color: var(--fg);
+  font-weight: 500;
+}
+.mail-row-snippet {
+  font-size: 11.5px;
+  color: var(--fg-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.005em;
+}
+.mail-row-actions {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 100ms ease;
+  pointer-events: none;
+}
+.mail-row:hover .mail-row-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.mail-row-action {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--rule);
+  background: var(--bg-b);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--fg-soft);
+  transition: background 100ms ease, color 100ms ease;
+}
+.mail-row-action:hover {
+  background: oklch(from var(--fg) l c h / 0.08);
+  color: var(--fg);
+}
+
+/* ── Glass card (used in overlays) ───────────────────────────────── */
+.glass-card {
+  background:
+    linear-gradient(180deg,
+      oklch(from var(--bg-a) l c h / 0.35) 0%,
+      oklch(from var(--bg-b) l c h / 0.30) 100%);
+  backdrop-filter: blur(48px) saturate(200%);
+  -webkit-backdrop-filter: blur(48px) saturate(200%);
+  border: 1px solid oklch(from var(--fg) l c h / 0.10);
+  box-shadow:
+    0 30px 80px -20px rgb(0 0 0 / 0.35),
+    inset 0 1px 0 oklch(from var(--fg) l c h / 0.06);
+}
+.tod-night .glass-card,
+.tod-deep .glass-card {
+  background:
+    linear-gradient(180deg,
+      oklch(from var(--bg-a) l c h / 0.45) 0%,
+      oklch(from var(--bg-b) l c h / 0.30) 100%);
+  border-color: oklch(from var(--fg) l c h / 0.14);
+}
+
+/* ── Mail labels ───────────────────────────────────────────────── */
+.mail-row-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.mail-label-chip {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--fg);
+  display: inline-flex;
+  align-items: center;
+  line-height: 14px;
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mail-label-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--fg);
+  transition: background 100ms ease;
+}
+.mail-label-menu-item:hover {
+  background: oklch(from var(--fg) l c h / 0.06);
+}
+.mail-label-menu-item[data-active="true"] {
+  background: oklch(from var(--fg) l c h / 0.08);
+}
+.cal-pill[data-active="true"] {
+  background: oklch(from var(--fg) l c h / 0.08);
+}

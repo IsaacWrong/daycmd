@@ -369,3 +369,573 @@ export async function sendEmail(input: {
   });
   return { ok: true, messageId: res.data.id ?? "" };
 }
+
+// ─── Thread-level API ─────────────────────────────────────────────
+
+export type ThreadSummary = {
+  id: string;
+  from: string;
+  fromEmail: string;
+  subject: string;
+  snippet: string;
+  date: string;
+  unread: boolean;
+  starred: boolean;
+  messageCount: number;
+  hasUnsubscribe: boolean;
+  labelIds: string[];
+};
+
+export type LabelInfo = {
+  id: string;
+  name: string;
+  type: "system" | "user";
+  color: string | null;
+  unread: number;
+  total: number;
+};
+
+export type ParsedMessage = {
+  id: string;
+  threadId: string;
+  from: string;
+  to: string;
+  cc: string;
+  subject: string;
+  date: string;
+  unread: boolean;
+  starred: boolean;
+  bodyHtml: string;
+  bodyText: string;
+  hasUnsubscribe: boolean;
+  isMe: boolean;
+};
+
+export type ThreadDetail = {
+  id: string;
+  subject: string;
+  messages: ParsedMessage[];
+  labelIds: string[];
+};
+
+function parseFromHeader(value: string): { name: string; email: string } {
+  // "Display Name <addr@x.com>" or "addr@x.com"
+  const m = /^\s*(.*?)\s*<([^>]+)>\s*$/.exec(value);
+  if (m) return { name: m[1].replace(/^"|"$/g, "") || m[2], email: m[2] };
+  return { name: value, email: value };
+}
+
+type GmailPart = {
+  mimeType?: string | null;
+  filename?: string | null;
+  body?: { data?: string | null; size?: number | null } | null;
+  parts?: GmailPart[] | null;
+};
+
+function findBodyPart(part: GmailPart | null | undefined, mime: string): string {
+  if (!part) return "";
+  if (
+    part.mimeType === mime &&
+    part.body?.data &&
+    !(part.filename && part.filename.length > 0)
+  ) {
+    return Buffer.from(part.body.data, "base64").toString("utf8");
+  }
+  for (const p of part.parts ?? []) {
+    const got = findBodyPart(p, mime);
+    if (got) return got;
+  }
+  return "";
+}
+
+export async function listThreads(
+  opts: { max?: number; query?: string; labelIds?: string[] } = {},
+): Promise<ThreadSummary[]> {
+  const gmail = await gmailClient();
+  const max = Math.max(1, Math.min(100, opts.max ?? 50));
+  const q = opts.query;
+
+  const list = await gmail.users.threads.list({
+    userId: "me",
+    q,
+    labelIds: opts.labelIds,
+    maxResults: max,
+  });
+  const ids = list.data.threads ?? [];
+
+  const threads = await Promise.all(
+    ids.map((t) =>
+      gmail.users.threads.get({
+        userId: "me",
+        id: t.id!,
+        format: "metadata",
+        metadataHeaders: ["From", "Subject", "Date", "List-Unsubscribe"],
+      }),
+    ),
+  );
+
+  return threads.map((r): ThreadSummary => {
+    const msgs = r.data.messages ?? [];
+    const last = msgs[msgs.length - 1] ?? msgs[0];
+    const headers = last?.payload?.headers ?? [];
+    const fromRaw = header(headers, "From");
+    const { name, email } = parseFromHeader(fromRaw);
+    const unread = msgs.some((m) =>
+      (m.labelIds ?? []).includes("UNREAD"),
+    );
+    const starred = msgs.some((m) =>
+      (m.labelIds ?? []).includes("STARRED"),
+    );
+    const hasUnsubscribe = msgs.some((m) => {
+      const h = m.payload?.headers ?? [];
+      return !!header(h, "List-Unsubscribe");
+    });
+    // Union of label IDs across all messages in the thread.
+    const labelIds = Array.from(
+      new Set(msgs.flatMap((m) => m.labelIds ?? [])),
+    );
+    return {
+      id: r.data.id!,
+      from: name,
+      fromEmail: email,
+      subject: header(headers, "Subject"),
+      snippet: r.data.snippet ?? "",
+      date: header(headers, "Date"),
+      unread,
+      starred,
+      messageCount: msgs.length,
+      hasUnsubscribe,
+      labelIds,
+    };
+  });
+}
+
+export async function listLabels(): Promise<LabelInfo[]> {
+  const gmail = await gmailClient();
+  const res = await gmail.users.labels.list({ userId: "me" });
+  const items = res.data.labels ?? [];
+  // Hydrate counts + colors. labels.list only returns name+id; need labels.get for counts.
+  const details = await Promise.all(
+    items.map((l) =>
+      gmail.users.labels.get({ userId: "me", id: l.id! }),
+    ),
+  );
+  return details.map((r): LabelInfo => {
+    const d = r.data;
+    return {
+      id: d.id!,
+      name: d.name ?? "",
+      type: d.type === "user" ? "user" : "system",
+      color: d.color?.backgroundColor ?? null,
+      unread: d.threadsUnread ?? 0,
+      total: d.threadsTotal ?? 0,
+    };
+  });
+}
+
+export async function getThread(threadId: string): Promise<ThreadDetail> {
+  const gmail = await gmailClient();
+  const [res, myEmail] = await Promise.all([
+    gmail.users.threads.get({
+      userId: "me",
+      id: threadId,
+      format: "full",
+    }),
+    getMyAddress(),
+  ]);
+  const myEmailLower = myEmail.toLowerCase();
+  const labelIdsAll = (res.data.messages ?? []).map((m) => m.labelIds ?? []);
+  const messages: ParsedMessage[] = (res.data.messages ?? []).map((m, i) => {
+    const headers = m.payload?.headers ?? [];
+    const labelIds = labelIdsAll[i];
+    const payload = m.payload as GmailPart | null | undefined;
+    const html = findBodyPart(payload, "text/html");
+    const text = findBodyPart(payload, "text/plain");
+    const fromRaw = header(headers, "From");
+    const fromEmail = parseFromHeader(fromRaw).email.toLowerCase();
+    const isMe =
+      labelIds.includes("SENT") || fromEmail === myEmailLower;
+    return {
+      id: m.id!,
+      threadId: m.threadId!,
+      from: fromRaw,
+      to: header(headers, "To"),
+      cc: header(headers, "Cc"),
+      subject: header(headers, "Subject"),
+      date: header(headers, "Date"),
+      unread: labelIds.includes("UNREAD"),
+      starred: labelIds.includes("STARRED"),
+      bodyHtml: html,
+      bodyText: text,
+      hasUnsubscribe: !!header(headers, "List-Unsubscribe"),
+      isMe,
+    };
+  });
+  const firstSubject = messages[0]?.subject ?? "";
+  const labelIds = Array.from(new Set(labelIdsAll.flat()));
+  return { id: res.data.id!, subject: firstSubject, messages, labelIds };
+}
+
+export async function modifyThread(
+  threadId: string,
+  patch: { addLabelIds?: string[]; removeLabelIds?: string[] },
+): Promise<{ ok: true }> {
+  const gmail = await gmailClient();
+  await gmail.users.threads.modify({
+    userId: "me",
+    id: threadId,
+    requestBody: {
+      addLabelIds: patch.addLabelIds,
+      removeLabelIds: patch.removeLabelIds,
+    },
+  });
+  return { ok: true };
+}
+
+export const archiveThread = (id: string) =>
+  modifyThread(id, { removeLabelIds: ["INBOX"] });
+export const markThreadRead = (id: string) =>
+  modifyThread(id, { removeLabelIds: ["UNREAD"] });
+export const markThreadUnread = (id: string) =>
+  modifyThread(id, { addLabelIds: ["UNREAD"] });
+export const starThread = (id: string) =>
+  modifyThread(id, { addLabelIds: ["STARRED"] });
+export const unstarThread = (id: string) =>
+  modifyThread(id, { removeLabelIds: ["STARRED"] });
+
+export async function trashThread(threadId: string): Promise<{ ok: true }> {
+  const gmail = await gmailClient();
+  await gmail.users.threads.trash({ userId: "me", id: threadId });
+  return { ok: true };
+}
+
+// ─── Drafts ─────────────────────────────────────────────────────
+
+export type DraftSummary = {
+  id: string;
+  messageId: string;
+  threadId: string;
+  to: string;
+  subject: string;
+  snippet: string;
+  date: string;
+  isReply: boolean;
+};
+
+export type DraftDetail = {
+  id: string;
+  messageId: string;
+  threadId: string;
+  to: string;
+  cc: string;
+  subject: string;
+  body: string;
+  isReply: boolean;
+};
+
+function buildReplyHeaders(opts: {
+  from: string;
+  to: string;
+  cc?: string;
+  subject: string;
+  inReplyTo?: string;
+  references?: string;
+  body: string;
+}): string {
+  const lines = [
+    `From: ${opts.from}`,
+    `To: ${opts.to}`,
+  ];
+  if (opts.cc) lines.push(`Cc: ${opts.cc}`);
+  lines.push(
+    `Subject: ${opts.subject}`,
+    "MIME-Version: 1.0",
+    'Content-Type: text/plain; charset="UTF-8"',
+  );
+  if (opts.inReplyTo) lines.push(`In-Reply-To: ${opts.inReplyTo}`);
+  if (opts.references) lines.push(`References: ${opts.references}`);
+  lines.push("", opts.body);
+  return Buffer.from(lines.join("\r\n"))
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+export async function listDrafts(
+  opts: { max?: number } = {},
+): Promise<DraftSummary[]> {
+  const gmail = await gmailClient();
+  const max = Math.max(1, Math.min(100, opts.max ?? 50));
+  const list = await gmail.users.drafts.list({ userId: "me", maxResults: max });
+  const ids = list.data.drafts ?? [];
+  const details = await Promise.all(
+    ids.map((d) =>
+      gmail.users.drafts.get({
+        userId: "me",
+        id: d.id!,
+        format: "metadata",
+        // metadataHeaders not supported on drafts.get — fetch metadata format
+      }),
+    ),
+  );
+  return details
+    .filter((r) => !!r.data.message)
+    .map((r): DraftSummary => {
+      const msg = r.data.message!;
+      const headers = msg.payload?.headers ?? [];
+      return {
+        id: r.data.id!,
+        messageId: msg.id ?? "",
+        threadId: msg.threadId ?? "",
+        to: header(headers, "To"),
+        subject: header(headers, "Subject"),
+        snippet: msg.snippet ?? "",
+        date: header(headers, "Date") || new Date().toISOString(),
+        isReply: !!(msg.threadId && msg.threadId !== msg.id),
+      };
+    });
+}
+
+export async function getDraft(draftId: string): Promise<DraftDetail> {
+  const gmail = await gmailClient();
+  const res = await gmail.users.drafts.get({
+    userId: "me",
+    id: draftId,
+    format: "full",
+  });
+  const msg = res.data.message;
+  if (!msg) throw new Error("draft has no message");
+  const headers = msg.payload?.headers ?? [];
+  const payload = msg.payload as GmailPart | null | undefined;
+  const text = findBodyPart(payload, "text/plain");
+  const html = findBodyPart(payload, "text/html");
+  return {
+    id: res.data.id!,
+    messageId: msg.id ?? "",
+    threadId: msg.threadId ?? "",
+    to: header(headers, "To"),
+    cc: header(headers, "Cc"),
+    subject: header(headers, "Subject"),
+    body: text || html.replace(/<[^>]+>/g, ""),
+    isReply: !!(msg.threadId && msg.threadId !== msg.id),
+  };
+}
+
+export async function deleteDraft(draftId: string): Promise<{ ok: true }> {
+  const gmail = await gmailClient();
+  await gmail.users.drafts.delete({ userId: "me", id: draftId });
+  return { ok: true };
+}
+
+export async function sendDraft(
+  draftId: string,
+): Promise<{ ok: true; messageId: string }> {
+  const gmail = await gmailClient();
+  const res = await gmail.users.drafts.send({
+    userId: "me",
+    requestBody: { id: draftId },
+  });
+  return { ok: true, messageId: res.data.id ?? "" };
+}
+
+export async function upsertReplyDraft(input: {
+  draftId?: string;
+  threadId: string;
+  body: string;
+  replyAll?: boolean;
+}): Promise<{ ok: true; draftId: string; messageId: string }> {
+  const gmail = await gmailClient();
+  const from = await getMyAddress();
+
+  const thread = await gmail.users.threads.get({
+    userId: "me",
+    id: input.threadId,
+    format: "metadata",
+    metadataHeaders: [
+      "From",
+      "To",
+      "Cc",
+      "Subject",
+      "Message-ID",
+      "References",
+      "Reply-To",
+    ],
+  });
+  const last = (thread.data.messages ?? []).slice(-1)[0];
+  if (!last) throw new Error("thread has no messages");
+  const headers = last.payload?.headers ?? [];
+  const replyTo = header(headers, "Reply-To") || header(headers, "From");
+  const origTo = header(headers, "To");
+  const origCc = header(headers, "Cc");
+  const origSubject = header(headers, "Subject");
+  const messageId = header(headers, "Message-ID");
+  const existingRefs = header(headers, "References");
+  const subject = origSubject.toLowerCase().startsWith("re:")
+    ? origSubject
+    : `Re: ${origSubject}`;
+  const references = existingRefs ? `${existingRefs} ${messageId}` : messageId;
+
+  let to = replyTo;
+  let cc = "";
+  if (input.replyAll) {
+    const others = [origTo, origCc]
+      .join(",")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s && !s.toLowerCase().includes(from.toLowerCase()));
+    cc = others.join(", ");
+  }
+
+  const raw = buildReplyHeaders({
+    from,
+    to,
+    cc,
+    subject,
+    inReplyTo: messageId,
+    references,
+    body: input.body,
+  });
+
+  const requestBody = {
+    message: { raw, threadId: input.threadId },
+  };
+
+  if (input.draftId) {
+    const res = await gmail.users.drafts.update({
+      userId: "me",
+      id: input.draftId,
+      requestBody,
+    });
+    return {
+      ok: true,
+      draftId: res.data.id ?? input.draftId,
+      messageId: res.data.message?.id ?? "",
+    };
+  }
+  const res = await gmail.users.drafts.create({
+    userId: "me",
+    requestBody,
+  });
+  return {
+    ok: true,
+    draftId: res.data.id ?? "",
+    messageId: res.data.message?.id ?? "",
+  };
+}
+
+export async function upsertComposeDraft(input: {
+  draftId?: string;
+  to: string;
+  cc?: string;
+  subject: string;
+  body: string;
+}): Promise<{ ok: true; draftId: string; messageId: string }> {
+  const gmail = await gmailClient();
+  const from = await getMyAddress();
+  const raw = buildReplyHeaders({
+    from,
+    to: input.to,
+    cc: input.cc,
+    subject: input.subject,
+    body: input.body,
+  });
+  const requestBody = { message: { raw } };
+  if (input.draftId) {
+    const res = await gmail.users.drafts.update({
+      userId: "me",
+      id: input.draftId,
+      requestBody,
+    });
+    return {
+      ok: true,
+      draftId: res.data.id ?? input.draftId,
+      messageId: res.data.message?.id ?? "",
+    };
+  }
+  const res = await gmail.users.drafts.create({
+    userId: "me",
+    requestBody,
+  });
+  return {
+    ok: true,
+    draftId: res.data.id ?? "",
+    messageId: res.data.message?.id ?? "",
+  };
+}
+
+export async function sendReply(input: {
+  threadId: string;
+  body: string;
+  replyAll?: boolean;
+}): Promise<{ ok: true; messageId: string }> {
+  const gmail = await gmailClient();
+  const from = await getMyAddress();
+
+  const thread = await gmail.users.threads.get({
+    userId: "me",
+    id: input.threadId,
+    format: "metadata",
+    metadataHeaders: [
+      "From",
+      "To",
+      "Cc",
+      "Subject",
+      "Message-ID",
+      "References",
+      "Reply-To",
+    ],
+  });
+  const last = (thread.data.messages ?? []).slice(-1)[0];
+  if (!last) throw new Error("thread has no messages");
+  const headers = last.payload?.headers ?? [];
+  const replyTo = header(headers, "Reply-To") || header(headers, "From");
+  const origTo = header(headers, "To");
+  const origCc = header(headers, "Cc");
+  const origSubject = header(headers, "Subject");
+  const messageId = header(headers, "Message-ID");
+  const existingRefs = header(headers, "References");
+  const subject = origSubject.toLowerCase().startsWith("re:")
+    ? origSubject
+    : `Re: ${origSubject}`;
+  const references = existingRefs
+    ? `${existingRefs} ${messageId}`
+    : messageId;
+
+  let to = replyTo;
+  let cc = "";
+  if (input.replyAll) {
+    const others = [origTo, origCc]
+      .join(",")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s && !s.includes(from));
+    cc = others.join(", ");
+  }
+
+  const lines = [
+    `From: ${from}`,
+    `To: ${to}`,
+  ];
+  if (cc) lines.push(`Cc: ${cc}`);
+  lines.push(
+    `Subject: ${subject}`,
+    "MIME-Version: 1.0",
+    'Content-Type: text/plain; charset="UTF-8"',
+    `In-Reply-To: ${messageId}`,
+    `References: ${references}`,
+    "",
+    input.body,
+  );
+  const raw = Buffer.from(lines.join("\r\n"))
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  const res = await gmail.users.messages.send({
+    userId: "me",
+    requestBody: { raw, threadId: input.threadId },
+  });
+  return { ok: true, messageId: res.data.id ?? "" };
+}

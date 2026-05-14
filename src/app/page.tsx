@@ -17,6 +17,8 @@ import { TaskList } from "@/components/redesign/TaskList";
 import { DailyNotePreview } from "@/components/redesign/DailyNotePreview";
 import { RightStreams } from "@/components/redesign/RightStreams";
 import { AgentBar, SkillStrip } from "@/components/redesign/AgentBar";
+import { CalendarOverlayProvider } from "@/components/calendar/CalendarOverlayProvider";
+import { MailOverlayProvider } from "@/components/mail/MailOverlayProvider";
 
 export default function Home() {
   const tod = useTod();
@@ -39,6 +41,8 @@ export default function Home() {
   }, []);
 
   return (
+    <CalendarOverlayProvider>
+    <MailOverlayProvider>
     <TodFrame tod={tod} focus={focus}>
       <Masthead tod={tod} />
 
@@ -98,5 +102,7 @@ export default function Home() {
         <AgentBar variant="wide" focus={focus} onToggleFocus={toggleFocus} />
       </div>
     </TodFrame>
+    </MailOverlayProvider>
+    </CalendarOverlayProvider>
   );
 }

@@ -17,6 +17,8 @@ import {
   createReplyDraft,
   sendEmail,
   unsubscribeMessage,
+  listLabels,
+  modifyThread,
 } from "./gmail";
 import {
   listCategories,
@@ -226,6 +228,34 @@ export const tools: Anthropic.Messages.ToolUnion[] = [
         body: { type: "string" },
       },
       required: ["to", "subject", "body"],
+    },
+  },
+  {
+    name: "gmail_list_labels",
+    description:
+      "List user-created Gmail labels (categories). Returns name + id for each. Call before applying labels so you know which ones exist. Do not invent label IDs.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "gmail_label_thread",
+    description:
+      "Add or remove labels (categories) on a Gmail thread. Use to categorize threads during triage (e.g., Work, Bills, Newsletters). Pass label IDs from gmail_list_labels. Multiple labels allowed.",
+    input_schema: {
+      type: "object",
+      properties: {
+        thread_id: { type: "string", description: "Gmail thread id." },
+        add: {
+          type: "array",
+          items: { type: "string" },
+          description: "Label IDs to add.",
+        },
+        remove: {
+          type: "array",
+          items: { type: "string" },
+          description: "Label IDs to remove.",
+        },
+      },
+      required: ["thread_id"],
     },
   },
   {
@@ -558,6 +588,35 @@ export async function runTool(
       case "gmail_unsubscribe": {
         const r = await unsubscribeMessage(String(input.message_id));
         return { ok: true, result: r };
+      }
+      case "gmail_list_labels": {
+        const labels = await listLabels();
+        // Return only fields the agent needs to keep the response tight.
+        return {
+          ok: true,
+          result: labels
+            .filter((l) => l.type === "user")
+            .map((l) => ({
+              id: l.id,
+              name: l.name,
+              unread: l.unread,
+              total: l.total,
+            })),
+        };
+      }
+      case "gmail_label_thread": {
+        const add = Array.isArray(input.add) ? (input.add as string[]) : [];
+        const remove = Array.isArray(input.remove)
+          ? (input.remove as string[])
+          : [];
+        if (add.length === 0 && remove.length === 0) {
+          return { ok: false, error: "add or remove required" };
+        }
+        await modifyThread(String(input.thread_id), {
+          addLabelIds: add.length ? add : undefined,
+          removeLabelIds: remove.length ? remove : undefined,
+        });
+        return { ok: true, result: { ok: true } };
       }
       case "get_calendar": {
         const hours = Number(input.hours_ahead ?? 36);
