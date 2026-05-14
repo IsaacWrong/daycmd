@@ -60,6 +60,19 @@ export async function appendTask(input: {
 
 const TASK_LINE_RE = /^(\s*[-*+]\s+)\[(.)\](\s+)(.*)$/;
 
+function stripTaskMetadata(body: string): string {
+  return body
+    .replace(/[🔺⏫🔼🔽⏬]/gu, "")
+    .replace(/📅\s*\d{4}-\d{2}-\d{2}/gu, "")
+    .replace(/🛫\s*\d{4}-\d{2}-\d{2}/gu, "")
+    .replace(/⏳\s*\d{4}-\d{2}-\d{2}/gu, "")
+    .replace(/✅\s*\d{4}-\d{2}-\d{2}/gu, "")
+    .replace(/❌\s*\d{4}-\d{2}-\d{2}/gu, "")
+    .replace(/🔁\s*[^📅🛫⏳✅❌🔺⏫🔼🔽⏬]+/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 type Priority = "highest" | "high" | "medium" | "low" | "lowest";
 
 function buildTaskBody(input: {
@@ -107,8 +120,8 @@ export async function editTask(input: {
     return { ok: false, error: `line ${input.line} is not a task`, status: 409 };
   }
   if (input.originalText !== undefined) {
-    const currentText = m[4].trim();
-    if (currentText !== input.originalText.trim()) {
+    const currentText = stripTaskMetadata(m[4]);
+    if (currentText !== stripTaskMetadata(input.originalText)) {
       return { ok: false, error: "task text has changed on disk", status: 409 };
     }
   }
