@@ -105,6 +105,22 @@ export function Masthead({
           localStorage.removeItem(LS_LOC);
         }
       }
+      if (!loc && typeof navigator !== "undefined" && navigator.geolocation) {
+        try {
+          loc = await new Promise<WeatherLoc>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+              (pos) =>
+                resolve({
+                  lat: Number(pos.coords.latitude.toFixed(3)),
+                  lon: Number(pos.coords.longitude.toFixed(3)),
+                }),
+              (err) => reject(err),
+              { timeout: 10_000, maximumAge: 24 * 60 * 60_000 },
+            );
+          });
+          if (loc) await putState(WEATHER_LOC_KEY, loc);
+        } catch {}
+      }
       if (!loc || cancelled) return;
       try {
         const w = await fetchWeatherDirect(loc.lat, loc.lon);
