@@ -5,7 +5,40 @@ import { createPortal } from "react-dom";
 import { Markdown } from "@/components/Markdown";
 import { SKILLS, type SkillDef } from "@/lib/skills-defs";
 import { Paperclip, Sun } from "./Glyph";
-import { useAgent, RUN_SKILL_EVENT, type Msg } from "./useAgent";
+import { useAgent, RUN_SKILL_EVENT, type Attachment, type Msg } from "./useAgent";
+
+const MAX_ATTACH_BYTES = 20 * 1024 * 1024;
+
+async function fileToAttachment(file: File): Promise<Attachment | null> {
+  if (file.size > MAX_ATTACH_BYTES) return null;
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const type = file.type || "";
+  if (type.startsWith("image/")) {
+    const data = bytesToBase64(bytes);
+    return { kind: "image", mediaType: type, data, name: file.name };
+  }
+  if (type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+    const data = bytesToBase64(bytes);
+    return {
+      kind: "document",
+      mediaType: "application/pdf",
+      data,
+      name: file.name,
+    };
+  }
+  const text = new TextDecoder().decode(bytes);
+  return { kind: "text", data: text, name: file.name };
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let s = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    s += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(s);
+}
 
 type Variant = "wide" | "workspace";
 
@@ -184,9 +217,12 @@ export function AgentBar({
   const [mounted, setMounted] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [catOpen, setCatOpen] = useState(false);
+  const [pending, setPending] = useState<Attachment[]>([]);
+  const [attachError, setAttachError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const catBtnRef = useRef<HTMLButtonElement>(null);
   const catMenuRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -257,10 +293,95 @@ export function AgentBar({
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!input.trim()) return;
-    agent.send(input);
+    if (!input.trim() && pending.length === 0) return;
+    agent.send(input, pending.length ? { attachments: pending } : {});
     setInput("");
+    setPending([]);
+    setAttachError(null);
   }
+
+  async function onFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setAttachError(null);
+    const next: Attachment[] = [];
+    let rejected = 0;
+    for (const f of Array.from(files)) {
+      const att = await fileToAttachment(f);
+      if (att) next.push(att);
+      else rejected++;
+    }
+    if (rejected > 0) setAttachError(`${rejected} file(s) >20MB skipped`);
+    if (next.length) setPending((p) => [...p, ...next]);
+  }
+
+  function removeAttachment(idx: number) {
+    setPending((p) => p.filter((_, i) => i !== idx));
+  }
+
+  function openPicker() {
+    fileRef.current?.click();
+  }
+
+  const attachmentChips = pending.length > 0 && (
+    <div className="flex flex-wrap gap-1.5 mb-1.5">
+      {pending.map((a, i) => (
+        <span
+          key={i}
+          className="t-mono"
+          style={{
+            fontSize: 10.5,
+            padding: "2px 6px 2px 8px",
+            borderRadius: 4,
+            background: "oklch(from var(--c-agent) l c h / 0.16)",
+            color: "var(--fg)",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            maxWidth: 200,
+          }}
+          title={a.name}
+        >
+          <span
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {a.kind === "image" ? "🖼" : a.kind === "document" ? "📄" : "📝"} {a.name}
+          </span>
+          <button
+            type="button"
+            onClick={() => removeAttachment(i)}
+            aria-label={`Remove ${a.name}`}
+            style={{
+              background: "transparent",
+              border: 0,
+              color: "var(--fg-soft)",
+              cursor: "pointer",
+              padding: 0,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+    </div>
+  );
+
+  const hiddenFileInput = (
+    <input
+      ref={fileRef}
+      type="file"
+      multiple
+      style={{ display: "none" }}
+      onChange={(e) => {
+        void onFiles(e.target.files);
+        e.target.value = "";
+      }}
+    />
+  );
 
   const inputField = (
     <input
@@ -298,7 +419,14 @@ export function AgentBar({
             {agent.error}
           </p>
         )}
+        {hiddenFileInput}
         <form onSubmit={submit} className="mt-3.5">
+          {attachmentChips}
+          {attachError && (
+            <p className="text-[11px] mb-1" style={{ color: "var(--c-error)" }}>
+              {attachError}
+            </p>
+          )}
           <div
             className="glass flex items-center gap-3"
             style={{ padding: "12px 16px", borderRadius: 14, cursor: "text" }}
@@ -337,6 +465,8 @@ export function AgentBar({
               <>
                 <button
                   type="button"
+                  onClick={openPicker}
+                  title="Attach files"
                   className="inline-flex items-center text-fg-soft hover:text-fg"
                   style={{
                     background: "transparent",
@@ -455,12 +585,34 @@ export function AgentBar({
                 </p>
               )}
               <form onSubmit={submit} className="mt-3.5">
+                {attachmentChips}
+                {attachError && (
+                  <p className="text-[11px] mb-1" style={{ color: "var(--c-error)" }}>
+                    {attachError}
+                  </p>
+                )}
                 <div
                   className="glass flex items-center gap-3"
                   style={{ padding: "12px 16px", borderRadius: 14, cursor: "text" }}
                   onClick={focusInput}
                 >
                   {inputField}
+                  {!agent.busy && (
+                    <button
+                      type="button"
+                      onClick={openPicker}
+                      title="Attach files"
+                      className="inline-flex items-center text-fg-soft hover:text-fg"
+                      style={{
+                        background: "transparent",
+                        border: 0,
+                        padding: 0,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <Paperclip s={14} />
+                    </button>
+                  )}
                   {agent.busy ? (
                     <button
                       type="button"
@@ -490,7 +642,14 @@ export function AgentBar({
 
   return (
     <>
+      {hiddenFileInput}
       <form onSubmit={submit}>
+        {attachmentChips}
+        {attachError && (
+          <p className="text-[11px] mb-1" style={{ color: "var(--c-error)" }}>
+            {attachError}
+          </p>
+        )}
         <div
           className="glass"
           style={{
@@ -593,17 +752,41 @@ export function AgentBar({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                title="Attach"
-                className="inline-flex items-center text-fg-soft hover:text-fg"
+                onClick={openPicker}
+                title="Attach files"
+                className="inline-flex items-center justify-center text-fg-soft hover:text-fg"
                 style={{
                   width: 26,
                   height: 26,
                   background: "transparent",
                   border: 0,
                   cursor: "pointer",
+                  position: "relative",
                 }}
               >
                 <Paperclip s={14} />
+                {pending.length > 0 && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: -2,
+                      right: -2,
+                      minWidth: 14,
+                      height: 14,
+                      borderRadius: 999,
+                      background: "var(--c-agent)",
+                      color: "white",
+                      fontSize: 9,
+                      fontWeight: 600,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "0 3px",
+                    }}
+                  >
+                    {pending.length}
+                  </span>
+                )}
               </button>
               <button
                 type="button"
