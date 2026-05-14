@@ -6,9 +6,20 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 let cache: { ts: number; data: number[] } | null = null;
-const TTL_MS = 90_000;
+let inflight: Promise<number[]> | null = null;
+const TTL_MS = 10 * 60_000;
 
 const NO_STORE = { "Cache-Control": "no-store, must-revalidate" };
+
+async function compute(): Promise<number[]> {
+  const projects = await listActiveProjects();
+  const repos = projects
+    .map((p) => (typeof p.frontmatter.repo === "string" ? p.frontmatter.repo : ""))
+    .filter(Boolean);
+  const counts = await getDailyCommitCounts(repos, 14);
+  cache = { ts: Date.now(), data: counts };
+  return counts;
+}
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -17,12 +28,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ days: cache.data }, { headers: NO_STORE });
   }
   try {
-    const projects = await listActiveProjects();
-    const repos = projects
-      .map((p) => (typeof p.frontmatter.repo === "string" ? p.frontmatter.repo : ""))
-      .filter(Boolean);
-    const counts = await getDailyCommitCounts(repos, 14);
-    cache = { ts: Date.now(), data: counts };
+    if (!inflight) {
+      inflight = compute().finally(() => {
+        inflight = null;
+      });
+    }
+    const counts = await inflight;
     return NextResponse.json({ days: counts }, { headers: NO_STORE });
   } catch (err) {
     return NextResponse.json(

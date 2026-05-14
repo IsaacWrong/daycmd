@@ -32,10 +32,32 @@ export type GhSummary = {
 };
 
 let _client: Octokit | null = null;
+let _rateWarned = 0;
 function client(): Octokit | null {
   if (!env.GITHUB_TOKEN) return null;
   if (_client) return _client;
-  _client = new Octokit({ auth: env.GITHUB_TOKEN });
+  _client = new Octokit({
+    auth: env.GITHUB_TOKEN,
+    throttle: {
+      onRateLimit: (retryAfter: number, options: { method: string; url: string }) => {
+        const now = Date.now();
+        if (now - _rateWarned > 30_000) {
+          _rateWarned = now;
+          console.warn(
+            `[github] rate limited on ${options.method} ${options.url}; retryAfter=${retryAfter}s — not retrying`,
+          );
+        }
+        return false;
+      },
+      onSecondaryRateLimit: (
+        _retryAfter: number,
+        options: { method: string; url: string },
+      ) => {
+        console.warn(`[github] secondary rate limit on ${options.method} ${options.url}`);
+        return false;
+      },
+    },
+  });
   return _client;
 }
 
@@ -138,36 +160,61 @@ function splitRepo(slug: string): { owner: string; repo: string } | null {
 
 let _login: string | null = null;
 let _loginAt = 0;
+let _loginInflight: Promise<string | null> | null = null;
+const LOGIN_TTL_MS = 60 * 60_000;
 export async function getLogin(): Promise<string | null> {
+  if (_login && Date.now() - _loginAt < LOGIN_TTL_MS) return _login;
+  if (_loginInflight) return _loginInflight;
   const gh = client();
   if (!gh) return null;
-  if (_login && Date.now() - _loginAt < 10 * 60_000) return _login;
-  try {
-    const res = await gh.request("GET /user");
-    _login = (res.data as { login: string }).login;
-    _loginAt = Date.now();
-  } catch {
-    _login = null;
-  }
-  return _login;
+  _loginInflight = (async () => {
+    try {
+      const res = await gh.request("GET /user");
+      _login = (res.data as { login: string }).login;
+      _loginAt = Date.now();
+    } catch {
+      _login = null;
+    }
+    return _login;
+  })().finally(() => {
+    _loginInflight = null;
+  });
+  return _loginInflight;
 }
 
-let _ownedRepos: string[] | null = null;
+type OwnedRepo = { full_name: string; pushed_at: string | null };
+let _ownedRepos: OwnedRepo[] | null = null;
 let _ownedReposAt = 0;
+let _ownedReposInflight: Promise<OwnedRepo[]> | null = null;
+const OWNED_REPOS_TTL_MS = 30 * 60_000;
+async function listOwnedReposFull(gh: Octokit): Promise<OwnedRepo[]> {
+  if (_ownedRepos && Date.now() - _ownedReposAt < OWNED_REPOS_TTL_MS) return _ownedRepos;
+  if (_ownedReposInflight) return _ownedReposInflight;
+  _ownedReposInflight = (async () => {
+    try {
+      const res = await gh.request("GET /user/repos", {
+        per_page: 100,
+        sort: "pushed",
+        affiliation: "owner,collaborator",
+      });
+      _ownedRepos = (res.data as OwnedRepo[]).map((r) => ({
+        full_name: r.full_name,
+        pushed_at: r.pushed_at,
+      }));
+      _ownedReposAt = Date.now();
+    } catch {
+      _ownedRepos = [];
+    }
+    return _ownedRepos;
+  })().finally(() => {
+    _ownedReposInflight = null;
+  });
+  return _ownedReposInflight;
+}
+
 async function listOwnedRepos(gh: Octokit): Promise<string[]> {
-  if (_ownedRepos && Date.now() - _ownedReposAt < 5 * 60_000) return _ownedRepos;
-  try {
-    const res = await gh.request("GET /user/repos", {
-      per_page: 100,
-      sort: "pushed",
-      affiliation: "owner,collaborator",
-    });
-    _ownedRepos = (res.data as { full_name: string }[]).map((r) => r.full_name);
-    _ownedReposAt = Date.now();
-  } catch {
-    _ownedRepos = [];
-  }
-  return _ownedRepos;
+  const repos = await listOwnedReposFull(gh);
+  return repos.map((r) => r.full_name);
 }
 
 function normName(s: string): string {
@@ -177,6 +224,10 @@ function normName(s: string): string {
 let _eventTrend: Map<string, number[]> | null = null;
 let _eventTrendAt = 0;
 let _eventTrendDays = 0;
+let _eventTrendInflight: Promise<Map<string, number[]>> | null = null;
+const EVENT_TREND_TTL_MS = 10 * 60_000;
+
+type RepoCommit = { sha: string; date: string; slug: string };
 
 type RawBranch = { name: string };
 type RawCommitWithDate = {
@@ -184,11 +235,11 @@ type RawCommitWithDate = {
   commit: { author: { date: string } | null; committer: { date: string } | null };
 };
 
-async function fetchAllBranchCommits(
+async function fetchRepoBranchCommits(
   gh: Octokit,
   slug: string,
   sinceIso: string,
-): Promise<{ sha: string; date: string }[]> {
+): Promise<RepoCommit[]> {
   const parts = splitRepo(slug);
   if (!parts) return [];
 
@@ -197,7 +248,7 @@ async function fetchAllBranchCommits(
     const res = await gh.request("GET /repos/{owner}/{repo}/branches", {
       owner: parts.owner,
       repo: parts.repo,
-      per_page: 50,
+      per_page: 30,
     });
     branches = (res.data as RawBranch[]) ?? [];
   } catch {
@@ -221,12 +272,12 @@ async function fetchAllBranchCommits(
     if (r.status !== "fulfilled") continue;
     for (const c of (r.value.data as RawCommitWithDate[]) ?? []) {
       if (seen.has(c.sha)) continue;
-      const date = c.commit.author?.date ?? c.commit.committer?.date;
+      const date = c.commit.committer?.date ?? c.commit.author?.date;
       if (!date) continue;
       seen.set(c.sha, date);
     }
   }
-  return Array.from(seen, ([sha, date]) => ({ sha, date }));
+  return Array.from(seen, ([sha, date]) => ({ sha, date, slug }));
 }
 
 export async function getUserDailyCommitsByRepo(
@@ -236,46 +287,63 @@ export async function getUserDailyCommitsByRepo(
   if (
     _eventTrend &&
     _eventTrendDays === days &&
-    now - _eventTrendAt < 60_000
+    now - _eventTrendAt < EVENT_TREND_TTL_MS
   ) {
     return _eventTrend;
   }
+  if (_eventTrendInflight) return _eventTrendInflight;
+
   const gh = client();
-  const result = new Map<string, number[]>();
-  if (!gh) return result;
+  if (!gh) return new Map();
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const startMs = today.getTime() - (days - 1) * 86_400_000;
-  const sinceIso = new Date(startMs).toISOString();
+  _eventTrendInflight = (async () => {
+    const result = new Map<string, number[]>();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const startMs = today.getTime() - (days - 1) * 86_400_000;
+    const sinceIso = new Date(startMs).toISOString();
 
-  const owned = await listOwnedRepos(gh);
-  const settled = await Promise.allSettled(
-    owned.map(async (slug) => ({
-      slug,
-      commits: await fetchAllBranchCommits(gh, slug, sinceIso),
-    })),
-  );
+    const repos = await listOwnedReposFull(gh);
+    // Only fan out to repos pushed-to within the window (plus a small buffer).
+    const cutoff = startMs - 86_400_000;
+    const active = repos.filter((r) => {
+      if (!r.pushed_at) return false;
+      return new Date(r.pushed_at).getTime() >= cutoff;
+    });
 
-  for (const r of settled) {
-    if (r.status !== "fulfilled") continue;
-    const trend = new Array(days).fill(0);
-    let any = false;
-    for (const c of r.value.commits) {
-      const d = new Date(c.date);
-      d.setHours(0, 0, 0, 0);
-      const idx = Math.floor((d.getTime() - startMs) / 86_400_000);
-      if (idx < 0 || idx >= days) continue;
-      trend[idx] += 1;
-      any = true;
+    const settled = await Promise.allSettled(
+      active.map((r) => fetchRepoBranchCommits(gh, r.full_name, sinceIso)),
+    );
+
+    let anySuccess = false;
+    for (const s of settled) {
+      if (s.status !== "fulfilled") continue;
+      anySuccess = true;
+      for (const c of s.value) {
+        const day = new Date(c.date);
+        day.setHours(0, 0, 0, 0);
+        const idx = Math.floor((day.getTime() - startMs) / 86_400_000);
+        if (idx < 0 || idx >= days) continue;
+        let trend = result.get(c.slug);
+        if (!trend) {
+          trend = new Array(days).fill(0);
+          result.set(c.slug, trend);
+        }
+        trend[idx] += 1;
+      }
     }
-    if (any) result.set(r.value.slug, trend);
-  }
 
-  _eventTrend = result;
-  _eventTrendAt = now;
-  _eventTrendDays = days;
-  return result;
+    if (!anySuccess) return _eventTrend ?? result;
+
+    _eventTrend = result;
+    _eventTrendAt = Date.now();
+    _eventTrendDays = days;
+    return result;
+  })().finally(() => {
+    _eventTrendInflight = null;
+  });
+
+  return _eventTrendInflight;
 }
 
 export async function findRepoForName(name: string): Promise<string | null> {
@@ -292,93 +360,47 @@ export async function findRepoForName(name: string): Promise<string | null> {
 }
 
 export async function getDailyCommitCounts(
-  repoSlugs: string[],
+  _repoSlugs: string[],
   days = 14,
 ): Promise<number[]> {
   const counts = new Array(days).fill(0);
-  const gh = client();
-  if (!gh) return counts;
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - (days - 1));
-  const startMs = start.getTime();
-
-  // Authenticated user → pull their public + private push activity across ALL repos
-  // (covers repos that aren't tracked in the vault Projects/ folder).
-  let login: string | null = null;
-  try {
-    const me = await gh.request("GET /user");
-    login = (me.data as { login: string }).login;
-  } catch {}
-
-  const seen = new Set<string>(); // dedupe by repo+sha
-  function addCommit(dateIso: string) {
-    const d = new Date(dateIso);
-    d.setHours(0, 0, 0, 0);
-    const idx = Math.floor((d.getTime() - startMs) / 86_400_000);
-    if (idx >= 0 && idx < days) counts[idx] += 1;
-  }
-
-  // Discover all repos the user has pushed to in the window via the events
-  // feed (covers repos not tracked in vault Projects/).
-  const discovered = new Set<string>();
-  if (login) {
-    type Event = {
-      type: string;
-      created_at: string;
-      repo: { name: string };
-    };
-    try {
-      const evRes = await gh.request("GET /users/{username}/events", {
-        username: login,
-        per_page: 100,
-      });
-      for (const ev of evRes.data as Event[]) {
-        if (ev.type !== "PushEvent") continue;
-        if (new Date(ev.created_at).getTime() < startMs) continue;
-        discovered.add(ev.repo.name);
-      }
-    } catch {}
-  }
-
-  // Merge with vault-tracked repos.
-  const allRepos = Array.from(new Set([...repoSlugs, ...discovered]));
-
-  const sinceIso = start.toISOString();
-  type RawCommit = { sha: string; commit: { author: { date: string } | null } };
-  const results = await Promise.allSettled(
-    allRepos.map(async (slug) => {
-      const parts = splitRepo(slug);
-      if (!parts) return { slug, commits: [] as RawCommit[] };
-      const res = await gh.request("GET /repos/{owner}/{repo}/commits", {
-        owner: parts.owner,
-        repo: parts.repo,
-        since: sinceIso,
-        per_page: 100,
-        ...(login ? { author: login } : {}),
-      });
-      return { slug, commits: res.data as RawCommit[] };
-    }),
-  );
-  for (const r of results) {
-    if (r.status !== "fulfilled") continue;
-    for (const c of r.value.commits) {
-      const date = c.commit.author?.date;
-      if (!date) continue;
-      const key = `${r.value.slug}/${c.sha}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      addCommit(date);
-    }
+  const byRepo = await getUserDailyCommitsByRepo(days);
+  for (const trend of byRepo.values()) {
+    for (let i = 0; i < days; i++) counts[i] += trend[i] ?? 0;
   }
   return counts;
 }
+
+const REPO_STATS_TTL_MS = 10 * 60_000;
+const _repoStatsCache = new Map<string, { ts: number; data: RepoStats }>();
+const _repoStatsInflight = new Map<string, Promise<RepoStats>>();
 
 export async function getRepoStats(
   slug: string,
   opts: { days?: number; author?: string } = {},
 ): Promise<RepoStats> {
   const days = opts.days ?? 30;
+  const cacheKey = `${slug}|${days}|${opts.author ?? ""}`;
+  const cached = _repoStatsCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < REPO_STATS_TTL_MS) return cached.data;
+  const inflight = _repoStatsInflight.get(cacheKey);
+  if (inflight) return inflight;
+
+  const promise = _getRepoStatsImpl(slug, days, opts.author).then((data) => {
+    if (!data.error) _repoStatsCache.set(cacheKey, { ts: Date.now(), data });
+    return data;
+  }).finally(() => {
+    _repoStatsInflight.delete(cacheKey);
+  });
+  _repoStatsInflight.set(cacheKey, promise);
+  return promise;
+}
+
+async function _getRepoStatsImpl(
+  slug: string,
+  days: number,
+  author: string | undefined,
+): Promise<RepoStats> {
   const empty: RepoStats = {
     repo: slug,
     lastCommit: null,
@@ -397,8 +419,6 @@ export async function getRepoStats(
   sinceDate.setHours(0, 0, 0, 0);
   sinceDate.setDate(sinceDate.getDate() - days);
   const since = sinceDate.toISOString();
-
-  const author = opts.author;
 
   type RawCommit = {
     sha: string;

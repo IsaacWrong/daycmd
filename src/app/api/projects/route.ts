@@ -10,11 +10,24 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  try {
-    const projects = await listActiveProjects();
-    const eventsByRepo = await getUserDailyCommitsByRepo(14);
-    const enriched = await Promise.all(
+type EnrichedProject = {
+  name: string;
+  status: string | null;
+  next: string | null;
+  repo: string | null;
+  url: string | null;
+  weeklyHours: number;
+  stats: RepoStats | null;
+};
+
+let _cache: { ts: number; data: EnrichedProject[] } | null = null;
+let _inflight: Promise<EnrichedProject[]> | null = null;
+const PROJECTS_TTL_MS = 5 * 60_000;
+
+async function compute(): Promise<EnrichedProject[]> {
+  const projects = await listActiveProjects();
+  const eventsByRepo = await getUserDailyCommitsByRepo(14);
+  const enriched = await Promise.all(
       projects.map(async (p) => {
         let repo: string | null =
           typeof p.frontmatter.repo === "string" && p.frontmatter.repo.length > 0
@@ -45,6 +58,21 @@ export async function GET() {
         };
       }),
     );
+  _cache = { ts: Date.now(), data: enriched };
+  return enriched;
+}
+
+export async function GET() {
+  try {
+    if (_cache && Date.now() - _cache.ts < PROJECTS_TTL_MS) {
+      return NextResponse.json({ projects: _cache.data });
+    }
+    if (!_inflight) {
+      _inflight = compute().finally(() => {
+        _inflight = null;
+      });
+    }
+    const enriched = await _inflight;
     return NextResponse.json({ projects: enriched });
   } catch (err) {
     return NextResponse.json(
