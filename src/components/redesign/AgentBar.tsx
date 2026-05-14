@@ -646,6 +646,7 @@ export function AgentBar({
           display: "flex",
           flexDirection: "column",
           alignItems: "stretch",
+          justifyContent: "flex-end",
           gap: 12,
           width: "100%",
           minHeight: 0,
