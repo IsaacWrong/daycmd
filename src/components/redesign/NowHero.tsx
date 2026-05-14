@@ -175,18 +175,20 @@ function DayStripInner({ events, nowMs }: { events: CalEvent[]; nowMs: number })
         >
           now
         </span>
-        {ticks.map((tk, i) => (
-          <span
-            key={i}
-            style={{
-              position: "absolute",
-              left: `${tk.pct}%`,
-              transform: "translateX(-50%)",
-            }}
-          >
-            {tk.label}
-          </span>
-        ))}
+        {ticks.map((tk, i) =>
+          tk.pct < 6 ? null : (
+            <span
+              key={i}
+              style={{
+                position: "absolute",
+                left: `${tk.pct}%`,
+                transform: "translateX(-50%)",
+              }}
+            >
+              {tk.label}
+            </span>
+          ),
+        )}
       </div>
     </div>
   );
