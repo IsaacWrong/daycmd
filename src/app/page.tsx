@@ -24,7 +24,24 @@ export default function Home() {
   const tod = useTod();
   const [focus, toggleFocus] = useFocusMode();
   const [agentOpen, setAgentOpen] = useState(false);
+  const [stripMounted, setStripMounted] = useState(false);
+  const [stripClosing, setStripClosing] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    if (agentOpen) {
+      setStripMounted(true);
+      setStripClosing(false);
+      return;
+    }
+    if (!stripMounted) return;
+    setStripClosing(true);
+    const id = setTimeout(() => {
+      setStripMounted(false);
+      setStripClosing(false);
+    }, 260);
+    return () => clearTimeout(id);
+  }, [agentOpen]);
 
   // Bounce to /setup if VAULT_PATH or ANTHROPIC_API_KEY is missing.
   useEffect(() => {
@@ -94,14 +111,14 @@ export default function Home() {
           zIndex: 5,
           display: "flex",
           flexDirection: "column",
-          alignItems: agentOpen ? "stretch" : "flex-end",
+          alignItems: "stretch",
           gap: 16,
           pointerEvents: "none",
         }}
       >
-        {agentOpen && (
+        {stripMounted && (
           <div
-            className="agent-strip-enter"
+            className={stripClosing ? "agent-strip-exit" : "agent-strip-enter"}
             style={{
               opacity: focus ? 1 : 0.85,
               transition: "opacity 320ms ease",
@@ -111,7 +128,7 @@ export default function Home() {
             <SkillStrip />
           </div>
         )}
-        <div style={{ pointerEvents: "auto", width: agentOpen ? "100%" : "auto" }}>
+        <div style={{ pointerEvents: "auto", width: "100%" }}>
           <AgentBar
             variant="wide"
             focus={focus}

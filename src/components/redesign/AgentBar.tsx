@@ -229,6 +229,8 @@ export function AgentBar({
     setBarOpenLocal(next);
     onOpenChange?.(next);
   };
+  const [barMounted, setBarMounted] = useState(barOpen);
+  const [barClosing, setBarClosing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const catBtnRef = useRef<HTMLButtonElement>(null);
   const catMenuRef = useRef<HTMLDivElement>(null);
@@ -256,6 +258,22 @@ export function AgentBar({
     if (variant !== "wide") return;
     if (agent.busy && !barOpen) setBarOpen(true);
   }, [agent.busy]);
+
+  useEffect(() => {
+    if (variant !== "wide") return;
+    if (barOpen) {
+      setBarMounted(true);
+      setBarClosing(false);
+      return;
+    }
+    if (!barMounted) return;
+    setBarClosing(true);
+    const id = setTimeout(() => {
+      setBarMounted(false);
+      setBarClosing(false);
+    }, 540);
+    return () => clearTimeout(id);
+  }, [barOpen, variant]);
 
   useEffect(() => {
     if (variant !== "wide" || !barOpen) return;
@@ -687,82 +705,92 @@ export function AgentBar({
   return (
     <>
       {hiddenFileInput}
-      <div ref={barWrapRef}>
-      {!barOpen ? (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            onClick={() => setBarOpen(true)}
-            aria-label="Open agent"
-            className="glass agent-pill-enter"
-            style={{
-              width: 56,
-              height: 56,
+      <div
+        ref={barWrapRef}
+        style={{
+          position: "relative",
+          display: "flex",
+          justifyContent: "flex-end",
+          width: "100%",
+        }}
+      >
+      {!barOpen && (
+        <button
+          type="button"
+          onClick={() => setBarOpen(true)}
+          aria-label="Open agent"
+          className="agent-pill-enter"
+          style={
+            {
+              position: barMounted ? "absolute" : "static",
+              right: 0,
+              bottom: 0,
+              width: 62,
+              height: 62,
               borderRadius: 999,
               padding: 0,
+              border: 0,
               cursor: "pointer",
+              background:
+                "linear-gradient(135deg, var(--c-agent), oklch(0.65 0.16 35))",
+              color: "white",
+              fontSize: 24,
+              fontWeight: 600,
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              position: "relative",
-            }}
-          >
+              boxShadow:
+                "inset 0 0 0 1px oklch(1 0 0 / 0.28), 0 14px 32px -12px var(--glass-sh), 0 4px 10px -4px var(--glass-sh)",
+              "--agent-pill-delay": barMounted ? "260ms" : "0ms",
+            } as React.CSSProperties
+          }
+        >
+          ✦
+          {agent.busy && (
             <span
-              className="inline-flex items-center justify-center text-white"
               style={{
-                width: 32,
-                height: 32,
+                position: "absolute",
+                top: 6,
+                right: 6,
+                width: 9,
+                height: 9,
                 borderRadius: 999,
-                background:
-                  "linear-gradient(135deg, var(--c-agent), oklch(0.65 0.16 35))",
-                fontSize: 15,
-                fontWeight: 600,
-                boxShadow: "inset 0 0 0 1px oklch(1 0 0 / 0.25)",
+                background: "white",
+                boxShadow: "0 0 0 2px var(--c-agent)",
+              }}
+            />
+          )}
+          {pending.length > 0 && !agent.busy && (
+            <span
+              className="t-mono"
+              style={{
+                position: "absolute",
+                top: 3,
+                right: 3,
+                minWidth: 18,
+                height: 18,
+                borderRadius: 999,
+                background: "white",
+                color: "var(--c-agent)",
+                fontSize: 11,
+                fontWeight: 700,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "0 4px",
               }}
             >
-              ✦
+              {pending.length}
             </span>
-            {agent.busy && (
-              <span
-                style={{
-                  position: "absolute",
-                  top: 4,
-                  right: 4,
-                  width: 8,
-                  height: 8,
-                  borderRadius: 999,
-                  background: "var(--c-agent)",
-                  boxShadow: "0 0 0 2px var(--bg-a)",
-                }}
-              />
-            )}
-            {pending.length > 0 && !agent.busy && (
-              <span
-                className="t-mono"
-                style={{
-                  position: "absolute",
-                  top: 2,
-                  right: 2,
-                  minWidth: 16,
-                  height: 16,
-                  borderRadius: 999,
-                  background: "var(--c-agent)",
-                  color: "white",
-                  fontSize: 10,
-                  fontWeight: 600,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: "0 4px",
-                }}
-              >
-                {pending.length}
-              </span>
-            )}
-          </button>
-        </div>
-      ) : (
-      <form onSubmit={submit} className="agent-bar-enter">
+          )}
+        </button>
+      )}
+      {barMounted && (
+      <form
+        onSubmit={submit}
+        className={barClosing ? "agent-bar-exit" : "agent-bar-enter"}
+        style={{ width: "100%" }}
+      >
         {attachmentChips}
         {attachError && (
           <p className="text-[11px] mb-1" style={{ color: "var(--c-error)" }}>
@@ -951,3 +979,5 @@ export function AgentBar({
     </>
   );
 }
+
+// (compat note removed)

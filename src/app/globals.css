@@ -164,7 +164,7 @@ button { font-family: inherit; }
 @keyframes agent-bar-expand {
   from {
     opacity: 0;
-    clip-path: inset(0 0 0 calc(100% - 56px) round 18px);
+    clip-path: inset(0 0 0 calc(100% - 62px) round 18px);
     filter: blur(2px);
   }
   60% {
@@ -195,15 +195,60 @@ button { font-family: inherit; }
     transform: scale(1);
   }
 }
+@keyframes agent-bar-collapse {
+  from {
+    opacity: 1;
+    clip-path: inset(0 round 18px);
+    filter: blur(0);
+  }
+  40% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    clip-path: inset(0 0 0 calc(100% - 62px) round 18px);
+    filter: blur(2px);
+  }
+}
+@keyframes agent-strip-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes agent-pill-shrink {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
 .agent-bar-enter {
   animation: agent-bar-expand 520ms cubic-bezier(0.22, 0.61, 0.24, 1) both;
+  transform-origin: right center;
+}
+.agent-bar-exit {
+  animation: agent-bar-collapse 520ms cubic-bezier(0.22, 0.61, 0.24, 1) both;
   transform-origin: right center;
 }
 .agent-strip-enter {
   animation: agent-strip-fade 360ms cubic-bezier(0.22, 0.61, 0.24, 1) 260ms both;
 }
+.agent-strip-exit {
+  animation: agent-strip-fade-out 240ms ease-out both;
+}
 .agent-pill-enter {
-  animation: agent-pill-pop 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  animation: agent-pill-pop 280ms cubic-bezier(0.34, 1.56, 0.64, 1)
+    var(--agent-pill-delay, 0ms) both;
+}
+.agent-pill-exit {
+  animation: agent-pill-shrink 220ms cubic-bezier(0.4, 0, 1, 1) both;
 }
 
 /* ── Agent bar internals ─────────────────────────────────────────── */
