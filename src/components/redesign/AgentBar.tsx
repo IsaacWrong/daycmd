@@ -206,11 +206,15 @@ export function AgentBar({
   category,
   focus,
   onToggleFocus,
+  open,
+  onOpenChange,
 }: {
   variant?: Variant;
   category?: string;
   focus: boolean;
   onToggleFocus: () => void;
+  open?: boolean;
+  onOpenChange?: (v: boolean) => void;
 }) {
   const agent = useAgent(category);
   const [input, setInput] = useState("");
@@ -219,10 +223,17 @@ export function AgentBar({
   const [catOpen, setCatOpen] = useState(false);
   const [pending, setPending] = useState<Attachment[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
+  const [barOpenLocal, setBarOpenLocal] = useState(false);
+  const barOpen = open ?? barOpenLocal;
+  const setBarOpen = (next: boolean) => {
+    setBarOpenLocal(next);
+    onOpenChange?.(next);
+  };
   const inputRef = useRef<HTMLInputElement>(null);
   const catBtnRef = useRef<HTMLButtonElement>(null);
   const catMenuRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const barWrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -234,6 +245,37 @@ export function AgentBar({
       return () => cancelAnimationFrame(id);
     }
   }, [expanded]);
+
+  useEffect(() => {
+    if (variant !== "wide" || !barOpen) return;
+    const id = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, [variant, barOpen]);
+
+  useEffect(() => {
+    if (variant !== "wide") return;
+    if (agent.busy && !barOpen) setBarOpen(true);
+  }, [agent.busy]);
+
+  useEffect(() => {
+    if (variant !== "wide" || !barOpen) return;
+    function onDocMouseDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (barWrapRef.current?.contains(t)) return;
+      if (expanded) return;
+      if (catOpen) return;
+      setBarOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !expanded && !catOpen) setBarOpen(false);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [variant, barOpen, expanded, catOpen]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -254,6 +296,7 @@ export function AgentBar({
           e.preventDefault();
           agent.send(skill.prompt, { skill });
           setExpanded(true);
+          setBarOpen(true);
         }
       }
     }
@@ -285,6 +328,7 @@ export function AgentBar({
       const skill = (e as CustomEvent<SkillDef>).detail;
       if (!skill) return;
       setExpanded(true);
+      setBarOpen(true);
       agent.send(skill.prompt, { skill });
     }
     window.addEventListener(RUN_SKILL_EVENT, handler);
@@ -643,7 +687,82 @@ export function AgentBar({
   return (
     <>
       {hiddenFileInput}
-      <form onSubmit={submit}>
+      <div ref={barWrapRef}>
+      {!barOpen ? (
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            onClick={() => setBarOpen(true)}
+            aria-label="Open agent"
+            className="glass agent-pill-enter"
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 999,
+              padding: 0,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "relative",
+            }}
+          >
+            <span
+              className="inline-flex items-center justify-center text-white"
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 999,
+                background:
+                  "linear-gradient(135deg, var(--c-agent), oklch(0.65 0.16 35))",
+                fontSize: 15,
+                fontWeight: 600,
+                boxShadow: "inset 0 0 0 1px oklch(1 0 0 / 0.25)",
+              }}
+            >
+              ✦
+            </span>
+            {agent.busy && (
+              <span
+                style={{
+                  position: "absolute",
+                  top: 4,
+                  right: 4,
+                  width: 8,
+                  height: 8,
+                  borderRadius: 999,
+                  background: "var(--c-agent)",
+                  boxShadow: "0 0 0 2px var(--bg-a)",
+                }}
+              />
+            )}
+            {pending.length > 0 && !agent.busy && (
+              <span
+                className="t-mono"
+                style={{
+                  position: "absolute",
+                  top: 2,
+                  right: 2,
+                  minWidth: 16,
+                  height: 16,
+                  borderRadius: 999,
+                  background: "var(--c-agent)",
+                  color: "white",
+                  fontSize: 10,
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "0 4px",
+                }}
+              >
+                {pending.length}
+              </span>
+            )}
+          </button>
+        </div>
+      ) : (
+      <form onSubmit={submit} className="agent-bar-enter">
         {attachmentChips}
         {attachError && (
           <p className="text-[11px] mb-1" style={{ color: "var(--c-error)" }}>
@@ -826,6 +945,8 @@ export function AgentBar({
           </div>
         </div>
       </form>
+      )}
+      </div>
       {drawer}
     </>
   );

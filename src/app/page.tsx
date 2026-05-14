@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFocusMode, useTod, TodFrame } from "@/components/redesign/TodFrame";
 import { Masthead } from "@/components/redesign/Masthead";
@@ -23,6 +23,7 @@ import { MailOverlayProvider } from "@/components/mail/MailOverlayProvider";
 export default function Home() {
   const tod = useTod();
   const [focus, toggleFocus] = useFocusMode();
+  const [agentOpen, setAgentOpen] = useState(false);
   const router = useRouter();
 
   // Bounce to /setup if VAULT_PATH or ANTHROPIC_API_KEY is missing.
@@ -93,13 +94,32 @@ export default function Home() {
           zIndex: 5,
           display: "flex",
           flexDirection: "column",
+          alignItems: agentOpen ? "stretch" : "flex-end",
           gap: 16,
+          pointerEvents: "none",
         }}
       >
-        <div style={{ opacity: focus ? 1 : 0.85, transition: "opacity 320ms ease" }}>
-          <SkillStrip />
+        {agentOpen && (
+          <div
+            className="agent-strip-enter"
+            style={{
+              opacity: focus ? 1 : 0.85,
+              transition: "opacity 320ms ease",
+              pointerEvents: "auto",
+            }}
+          >
+            <SkillStrip />
+          </div>
+        )}
+        <div style={{ pointerEvents: "auto", width: agentOpen ? "100%" : "auto" }}>
+          <AgentBar
+            variant="wide"
+            focus={focus}
+            onToggleFocus={toggleFocus}
+            open={agentOpen}
+            onOpenChange={setAgentOpen}
+          />
         </div>
-        <AgentBar variant="wide" focus={focus} onToggleFocus={toggleFocus} />
       </div>
     </TodFrame>
     </MailOverlayProvider>
