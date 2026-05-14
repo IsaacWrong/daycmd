@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { listActiveProjects, createProject } from "@/lib/projects";
-import { getRepoStats, type RepoStats } from "@/lib/github";
+import { findRepoForName, getRepoStats, type RepoStats } from "@/lib/github";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,15 +10,18 @@ export async function GET() {
     const projects = await listActiveProjects();
     const enriched = await Promise.all(
       projects.map(async (p) => {
+        let repo: string | null =
+          typeof p.frontmatter.repo === "string" && p.frontmatter.repo.length > 0
+            ? p.frontmatter.repo
+            : null;
+        if (!repo) repo = await findRepoForName(p.name);
         let stats: RepoStats | null = null;
-        if (typeof p.frontmatter.repo === "string" && p.frontmatter.repo.length > 0) {
-          stats = await getRepoStats(p.frontmatter.repo);
-        }
+        if (repo) stats = await getRepoStats(repo, { days: 30 });
         return {
           name: p.name,
           status: p.frontmatter.status ?? null,
           next: p.frontmatter.next ?? null,
-          repo: p.frontmatter.repo ?? null,
+          repo,
           url: p.frontmatter.url ?? null,
           weeklyHours: p.frontmatter.weekly_hours ?? 0,
           stats,

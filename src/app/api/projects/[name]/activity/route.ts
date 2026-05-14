@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { readProject } from "@/lib/projects";
-import { getRepoStats } from "@/lib/github";
+import { findRepoForName, getRepoStats } from "@/lib/github";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,9 +22,11 @@ export async function GET(
 
   try {
     const project = await readProject(decoded);
-    const repo = typeof project.frontmatter.repo === "string" ? project.frontmatter.repo : "";
+    let repo =
+      typeof project.frontmatter.repo === "string" ? project.frontmatter.repo : "";
+    if (!repo) repo = (await findRepoForName(decoded)) ?? "";
     if (repo) {
-      const stats = await getRepoStats(repo);
+      const stats = await getRepoStats(repo, { days: 30 });
       if (stats.lastCommit) {
         items.push({
           kind: "github",

@@ -13,6 +13,7 @@ type ProjectRow = {
   archived: boolean;
   started: string | null;
   repo: string | null;
+  repoAutoLinked?: boolean;
   url: string | null;
   next: string | null;
   weeklyHours: number;
@@ -20,7 +21,8 @@ type ProjectRow = {
   lastLogDate: string | null;
   logCount: number;
   stats: {
-    weeklyCommits: number;
+    recentCommits: number;
+    windowDays: number;
     openPRs: number;
     lastCommit: { date: string; message: string; url: string } | null;
   } | null;
@@ -33,7 +35,7 @@ type Overview = {
     archivedCount: number;
     weeklyHoursTotal: number;
     totalHoursAllTime: number;
-    commitsWeekTotal: number;
+    commits30dTotal: number;
     openPRsTotal: number;
     byStatus: Record<string, number>;
   };
@@ -88,10 +90,51 @@ type SortKey = "name" | "status" | "weeklyHours" | "totalHours" | "commits" | "l
 export default function ProjectsOverviewPage() {
   const tod = useTod();
   const [focus] = useFocusMode();
-  const { data, error } = usePoll<Overview>("/api/projects/overview", 60_000);
+  const { data, error, refresh } = usePoll<Overview>("/api/projects/overview", 60_000);
   const [showArchived, setShowArchived] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("weeklyHours");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    status: "idea",
+    repo: "",
+    url: "",
+    next: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  async function submitAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    setBusy(true);
+    setAddError(null);
+    try {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          status: form.status || undefined,
+          repo: form.repo.trim() || undefined,
+          url: form.url.trim() || undefined,
+          next: form.next.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.error ?? `Failed (${res.status})`);
+      }
+      setForm({ name: "", status: "idea", repo: "", url: "", next: "" });
+      setAdding(false);
+      await refresh();
+    } catch (err) {
+      setAddError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const visible = useMemo(() => {
     const rows = (data?.projects ?? []).filter(
@@ -110,7 +153,7 @@ export default function ProjectsOverviewPage() {
           case "totalHours":
             return r.totalHours;
           case "commits":
-            return r.stats?.weeklyCommits ?? 0;
+            return r.stats?.recentCommits ?? 0;
           case "lastLog":
             return r.lastLogDate ?? "";
         }
@@ -169,6 +212,25 @@ export default function ProjectsOverviewPage() {
           </div>
         </div>
         <span className="flex-1" />
+        <button
+          type="button"
+          onClick={() => {
+            setAdding((v) => !v);
+            setAddError(null);
+          }}
+          className="t-mono"
+          style={{
+            fontSize: 11,
+            padding: "4px 10px",
+            border: "1px solid var(--rule)",
+            borderRadius: 6,
+            background: "transparent",
+            color: "var(--fg)",
+            cursor: "pointer",
+          }}
+        >
+          {adding ? "cancel" : "+ new project"}
+        </button>
         <label className="flex items-center gap-2 t-mono" style={{ fontSize: 11, color: "var(--fg-soft)" }}>
           <input
             type="checkbox"
@@ -186,10 +248,113 @@ export default function ProjectsOverviewPage() {
           </p>
         )}
 
-        <Section eyebrow="overview" title="All projects">
+        {adding && (
+          <form
+            onSubmit={submitAdd}
+            className="mb-6"
+            style={{
+              padding: 16,
+              border: "1px solid var(--rule)",
+              borderRadius: 12,
+              background: "oklch(from var(--bg) l c h / 0.4)",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              gap: 12,
+            }}
+          >
+            <FormField label="Name *">
+              <input
+                autoFocus
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Daycmd"
+                disabled={busy}
+                style={fieldStyle}
+              />
+            </FormField>
+            <FormField label="Status">
+              <select
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value })}
+                disabled={busy}
+                style={fieldStyle}
+              >
+                <option value="idea">idea</option>
+                <option value="active">active</option>
+                <option value="building">building</option>
+                <option value="on hold">on hold</option>
+                <option value="shipping">shipping</option>
+                <option value="shipped">shipped</option>
+              </select>
+            </FormField>
+            <FormField label="Repo (owner/name)">
+              <input
+                value={form.repo}
+                onChange={(e) => setForm({ ...form, repo: e.target.value })}
+                placeholder="leave blank to auto-link"
+                disabled={busy}
+                style={fieldStyle}
+              />
+            </FormField>
+            <FormField label="URL">
+              <input
+                value={form.url}
+                onChange={(e) => setForm({ ...form, url: e.target.value })}
+                placeholder="https://"
+                disabled={busy}
+                style={fieldStyle}
+              />
+            </FormField>
+            <FormField label="Next">
+              <input
+                value={form.next}
+                onChange={(e) => setForm({ ...form, next: e.target.value })}
+                placeholder="First milestone"
+                disabled={busy}
+                style={fieldStyle}
+              />
+            </FormField>
+            <div
+              style={{
+                gridColumn: "1 / -1",
+                display: "flex",
+                gap: 12,
+                alignItems: "center",
+              }}
+            >
+              <button
+                type="submit"
+                disabled={busy || !form.name.trim()}
+                className="t-mono"
+                style={{
+                  fontSize: 12,
+                  padding: "6px 14px",
+                  border: "1px solid var(--rule)",
+                  borderRadius: 6,
+                  background: "oklch(from var(--bg) l c h / 0.6)",
+                  color: "var(--fg)",
+                  cursor: busy ? "default" : "pointer",
+                  opacity: busy || !form.name.trim() ? 0.5 : 1,
+                }}
+              >
+                {busy ? "creating…" : "create project"}
+              </button>
+              {addError && (
+                <span className="text-[12px]" style={{ color: "var(--c-error)" }}>
+                  {addError}
+                </span>
+              )}
+            </div>
+          </form>
+        )}
+
+        <Section eyebrow="overview">
           <div
             className="grid gap-3 mb-6"
-            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}
+            style={{
+              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+              marginTop: 16,
+            }}
           >
             <StatTile
               label="Active"
@@ -209,8 +374,8 @@ export default function ProjectsOverviewPage() {
               tone="var(--c-obsidian)"
             />
             <StatTile
-              label="Commits / wk"
-              value={String(totals?.commitsWeekTotal ?? 0)}
+              label="Commits / 30d"
+              value={String(totals?.commits30dTotal ?? 0)}
               sub={`${totals?.openPRsTotal ?? 0} open PRs`}
               tone="var(--c-github)"
             />
@@ -244,7 +409,7 @@ export default function ProjectsOverviewPage() {
           )}
         </Section>
 
-        <Section eyebrow="detail" title="Projects">
+        <Section eyebrow="detail">
           <div style={{ overflowX: "auto" }}>
             <table
               className="w-full"
@@ -256,7 +421,7 @@ export default function ProjectsOverviewPage() {
                   <Th label="Status" k="status" sortKey={sortKey} sortDir={sortDir} onClick={setSort} />
                   <Th label="Weekly h" k="weeklyHours" sortKey={sortKey} sortDir={sortDir} onClick={setSort} align="right" />
                   <Th label="Total h" k="totalHours" sortKey={sortKey} sortDir={sortDir} onClick={setSort} align="right" />
-                  <Th label="Commits / wk" k="commits" sortKey={sortKey} sortDir={sortDir} onClick={setSort} align="right" />
+                  <Th label="Commits / 30d" k="commits" sortKey={sortKey} sortDir={sortDir} onClick={setSort} align="right" />
                   <Th label="Last log" k="lastLog" sortKey={sortKey} sortDir={sortDir} onClick={setSort} align="right" />
                   <th style={{ padding: "8px 10px", textAlign: "right" }}>
                     <span className="t-eyebrow">activity</span>
@@ -266,7 +431,7 @@ export default function ProjectsOverviewPage() {
               <tbody>
                 {visible.map((p) => {
                   const accent = statusAccent(p.status);
-                  const commits = p.stats?.weeklyCommits ?? 0;
+                  const commits = p.stats?.recentCommits ?? 0;
                   const spark = [2, 0, 4, 3, 1, 5, 9].map(
                     (v) => v * (commits / 12 + 0.1),
                   );
@@ -295,6 +460,19 @@ export default function ProjectsOverviewPage() {
                               archived
                             </span>
                           )}
+                          {p.repoAutoLinked && (
+                            <span
+                              className="t-mono text-[10px]"
+                              style={{
+                                marginLeft: 4,
+                                color: "var(--c-github)",
+                                opacity: 0.7,
+                              }}
+                              title={`Auto-linked to ${p.repo}`}
+                            >
+                              auto
+                            </span>
+                          )}
                         </Link>
                       </td>
                       <td style={{ padding: "10px 10px", color: "var(--fg-soft)" }}>
@@ -316,7 +494,7 @@ export default function ProjectsOverviewPage() {
                         className="t-num"
                         style={{ padding: "10px 10px", textAlign: "right", color: "var(--c-github)" }}
                       >
-                        {p.stats?.weeklyCommits ?? "—"}
+                        {p.stats?.recentCommits ?? "—"}
                       </td>
                       <td
                         className="t-mono text-fg-soft"
@@ -343,6 +521,34 @@ export default function ProjectsOverviewPage() {
         </Section>
       </div>
     </TodFrame>
+  );
+}
+
+const fieldStyle: React.CSSProperties = {
+  width: "100%",
+  background: "transparent",
+  border: "1px solid var(--rule)",
+  borderRadius: 6,
+  padding: "6px 8px",
+  color: "var(--fg)",
+  outline: 0,
+  fontSize: 13,
+};
+
+function FormField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="t-eyebrow" style={{ color: "var(--fg-soft)" }}>
+        {label}
+      </span>
+      {children}
+    </label>
   );
 }
 

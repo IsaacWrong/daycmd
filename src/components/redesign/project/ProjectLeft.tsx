@@ -67,7 +67,7 @@ function ProjectGitHub({ name, repo }: { name: string; repo: string | null }) {
               }}
             />
             <span className="t-mono" style={{ fontSize: 10, color: "var(--fg-soft)" }}>
-              {stats.weeklyCommits} commits · {stats.openPRs} PR
+              {stats.recentCommits} commits · {stats.openPRs} PR
             </span>
           </span>
         ) : null

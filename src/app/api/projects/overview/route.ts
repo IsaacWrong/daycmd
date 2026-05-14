@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { listProjects, parseLogEntries, computeWeeklyHoursFromBody } from "@/lib/projects";
-import { getRepoStats, type RepoStats } from "@/lib/github";
+import { findRepoForName, getRepoStats, type RepoStats } from "@/lib/github";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,6 +11,7 @@ type ProjectOverviewRow = {
   archived: boolean;
   started: string | null;
   repo: string | null;
+  repoAutoLinked: boolean;
   url: string | null;
   next: string | null;
   weeklyHours: number;
@@ -33,16 +34,29 @@ export async function GET() {
             ? entries.reduce((a, b) => (a.date > b.date ? a : b)).date
             : null;
         const weeklyHours = computeWeeklyHoursFromBody(p.body);
+        let repo: string | null =
+          typeof p.frontmatter.repo === "string" && p.frontmatter.repo.length > 0
+            ? p.frontmatter.repo
+            : null;
+        let repoAutoLinked = false;
+        if (!repo) {
+          const match = await findRepoForName(p.name);
+          if (match) {
+            repo = match;
+            repoAutoLinked = true;
+          }
+        }
         let stats: RepoStats | null = null;
-        if (typeof p.frontmatter.repo === "string" && p.frontmatter.repo.length > 0) {
-          stats = await getRepoStats(p.frontmatter.repo);
+        if (repo) {
+          stats = await getRepoStats(repo, { days: 30 });
         }
         return {
           name: p.name,
           status: p.frontmatter.status ?? null,
           archived: p.frontmatter.archived === true,
           started: p.frontmatter.started ?? null,
-          repo: p.frontmatter.repo ?? null,
+          repo,
+          repoAutoLinked,
           url: p.frontmatter.url ?? null,
           next: p.frontmatter.next ?? null,
           weeklyHours,
@@ -69,8 +83,8 @@ export async function GET() {
         Math.round(active.reduce((s, r) => s + r.weeklyHours, 0) * 100) / 100,
       totalHoursAllTime:
         Math.round(rows.reduce((s, r) => s + r.totalHours, 0) * 100) / 100,
-      commitsWeekTotal: active.reduce(
-        (s, r) => s + (r.stats?.weeklyCommits ?? 0),
+      commits30dTotal: active.reduce(
+        (s, r) => s + (r.stats?.recentCommits ?? 0),
         0,
       ),
       openPRsTotal: active.reduce((s, r) => s + (r.stats?.openPRs ?? 0), 0),

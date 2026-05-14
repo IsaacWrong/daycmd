@@ -239,9 +239,8 @@ function projectAccent(p: ProjectDTO): SourceAccent {
 }
 
 function ProjectRow({ p }: { p: ProjectDTO }) {
-  const commits = p.stats?.weeklyCommits ?? 0;
-  // Synthesize a small 7-bar spark from the single weeklyCommits value.
-  const spark = [2, 0, 4, 3, 1, 5, 9].map((v) => v * (commits / 12 + 0.1));
+  const commits = p.stats?.recentCommits ?? 0;
+  const spark = [2, 0, 4, 3, 1, 5, 9].map((v) => v * (commits / 30 + 0.1));
   const accent = projectAccent(p);
   return (
     <Link

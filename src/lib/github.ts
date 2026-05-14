@@ -123,7 +123,8 @@ export async function getSummary(): Promise<GhSummary | { error: string }> {
 export type RepoStats = {
   repo: string;
   lastCommit: { sha: string; message: string; url: string; date: string } | null;
-  weeklyCommits: number;
+  recentCommits: number;
+  windowDays: number;
   openPRs: number;
   error?: string;
 };
@@ -132,6 +133,57 @@ function splitRepo(slug: string): { owner: string; repo: string } | null {
   const parts = slug.split("/");
   if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
   return { owner: parts[0], repo: parts[1] };
+}
+
+let _login: string | null = null;
+let _loginAt = 0;
+export async function getLogin(): Promise<string | null> {
+  const gh = client();
+  if (!gh) return null;
+  if (_login && Date.now() - _loginAt < 10 * 60_000) return _login;
+  try {
+    const res = await gh.request("GET /user");
+    _login = (res.data as { login: string }).login;
+    _loginAt = Date.now();
+  } catch {
+    _login = null;
+  }
+  return _login;
+}
+
+let _ownedRepos: string[] | null = null;
+let _ownedReposAt = 0;
+async function listOwnedRepos(gh: Octokit): Promise<string[]> {
+  if (_ownedRepos && Date.now() - _ownedReposAt < 5 * 60_000) return _ownedRepos;
+  try {
+    const res = await gh.request("GET /user/repos", {
+      per_page: 100,
+      sort: "pushed",
+      affiliation: "owner,collaborator",
+    });
+    _ownedRepos = (res.data as { full_name: string }[]).map((r) => r.full_name);
+    _ownedReposAt = Date.now();
+  } catch {
+    _ownedRepos = [];
+  }
+  return _ownedRepos;
+}
+
+function normName(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+export async function findRepoForName(name: string): Promise<string | null> {
+  const gh = client();
+  if (!gh) return null;
+  const target = normName(name);
+  if (!target) return null;
+  const repos = await listOwnedRepos(gh);
+  for (const r of repos) {
+    const repoName = r.split("/")[1] ?? "";
+    if (normName(repoName) === target) return r;
+  }
+  return null;
 }
 
 export async function getDailyCommitCounts(
@@ -217,11 +269,16 @@ export async function getDailyCommitCounts(
   return counts;
 }
 
-export async function getRepoStats(slug: string): Promise<RepoStats> {
+export async function getRepoStats(
+  slug: string,
+  opts: { days?: number; author?: string } = {},
+): Promise<RepoStats> {
+  const days = opts.days ?? 30;
   const empty: RepoStats = {
     repo: slug,
     lastCommit: null,
-    weeklyCommits: 0,
+    recentCommits: 0,
+    windowDays: days,
     openPRs: 0,
   };
   const gh = client();
@@ -229,7 +286,13 @@ export async function getRepoStats(slug: string): Promise<RepoStats> {
   const parts = splitRepo(slug);
   if (!parts) return { ...empty, error: `invalid repo slug: ${slug}` };
 
-  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  // Anchor `since` to start-of-day so commits earlier on day-N still count.
+  const sinceDate = new Date();
+  sinceDate.setHours(0, 0, 0, 0);
+  sinceDate.setDate(sinceDate.getDate() - days);
+  const since = sinceDate.toISOString();
+
+  const author = opts.author ?? (await getLogin()) ?? undefined;
 
   type RawCommit = {
     sha: string;
@@ -245,6 +308,7 @@ export async function getRepoStats(slug: string): Promise<RepoStats> {
         repo: parts.repo,
         since,
         per_page: 100,
+        ...(author ? { author } : {}),
       }),
       gh.request("GET /repos/{owner}/{repo}/pulls", {
         owner: parts.owner,
@@ -266,7 +330,8 @@ export async function getRepoStats(slug: string): Promise<RepoStats> {
             date: last.commit.author?.date ?? "",
           }
         : null,
-      weeklyCommits: commits.length,
+      recentCommits: commits.length,
+      windowDays: days,
       openPRs: prs.length,
     };
   } catch (err) {
