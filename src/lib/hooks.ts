@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 
 const INVALIDATE_EVENT = "poll:invalidate";
 
@@ -123,43 +123,38 @@ export function usePoll<T>(
   url: string,
   intervalMs = 30_000,
 ): { data: T | null; error: string | null; refresh: () => void } {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const tick = useRef(0);
-
-  const fetcher = async () => {
-    const seq = ++tick.current;
-    try {
-      const res = await fetch(url, { cache: "no-store" });
-      const json = await res.json();
-      if (seq !== tick.current) return;
-      if (!res.ok) {
-        setError(json.error ?? `HTTP ${res.status}`);
-      } else {
-        setData(json as T);
-        setError(null);
-      }
-    } catch (e) {
-      setError((e as Error).message);
-    }
+  const subscribe = (cb: () => void) => {
+    const entry = getEntry<T>(url);
+    entry.subs.add(cb);
+    return () => {
+      entry.subs.delete(cb);
+    };
   };
+  const snapshot = () =>
+    (getEntry<T>(url).data as T | undefined) ?? null;
+  const errorSnapshot = () => getEntry<T>(url).error;
+  const data = useSyncExternalStore<T | null>(subscribe, snapshot, () => null);
+  const error = useSyncExternalStore<string | null>(
+    subscribe,
+    errorSnapshot,
+    () => null,
+  );
 
   useEffect(() => {
-    fetcher();
-    const id = setInterval(fetcher, intervalMs);
+    void fetchInto<T>(url, url);
+    const id = setInterval(() => void fetchInto<T>(url, url), intervalMs);
     function onInvalidate(e: Event) {
       const detail = (e as CustomEvent<{ url: string }>).detail;
-      if (detail?.url === url) fetcher();
+      if (detail?.url === url) void fetchInto<T>(url, url);
     }
     window.addEventListener(INVALIDATE_EVENT, onInvalidate);
     return () => {
       clearInterval(id);
       window.removeEventListener(INVALIDATE_EVENT, onInvalidate);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, intervalMs]);
 
-  return { data, error, refresh: fetcher };
+  return { data, error, refresh: () => void fetchInto<T>(url, url) };
 }
 
 export function useDebouncedCallback<T extends (...a: never[]) => void>(
