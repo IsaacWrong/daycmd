@@ -338,7 +338,7 @@ function KnowledgeRow({
   );
 }
 
-function KnowledgeSection() {
+export function KnowledgeSection() {
   const { data, refresh } = usePoll<{ categories: CategoryStats[] }>(
     "/api/kb",
     5 * 60_000,
@@ -388,7 +388,7 @@ function KnowledgeSection() {
   );
 }
 
-function ErrorsSection() {
+export function ErrorsSection() {
   const { data, refresh } = usePoll<{ errors: ErrorRow[] }>("/api/errors", 60_000);
   const [busy, setBusy] = useState<string | null>(null);
   const errs = (data?.errors ?? []).slice(0, 4);
