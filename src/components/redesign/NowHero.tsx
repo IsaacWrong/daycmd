@@ -206,28 +206,35 @@ export function NowHero() {
   const now = findNow(events, Date.now());
 
   return (
-    <div className="focus-keep mb-10">
-      <div className="t-eyebrow mb-3.5">
-        {now ? (
-          <>
-            Now · ends {format(new Date(now.end), "h:mm a")} ·{" "}
+    <div
+      className="focus-keep flex items-center gap-7"
+      style={{
+        paddingTop: 14,
+        paddingBottom: 16,
+        borderBottom: "1px solid var(--rule)",
+      }}
+    >
+      <div style={{ minWidth: 0, flex: "0 1 auto" }}>
+        {now && (
+          <div className="t-eyebrow mb-1">
+            ends {format(new Date(now.end), "h:mm a")} ·{" "}
             {formatDistanceToNowStrict(new Date(now.end))} left
-          </>
-        ) : (
-          <>Now · open block</>
+          </div>
         )}
+        <h2
+          className="m-0 font-medium truncate"
+          style={{
+            fontSize: 18,
+            letterSpacing: "-0.015em",
+            lineHeight: 1.2,
+          }}
+        >
+          {now ? now.summary : "Open block"}
+        </h2>
       </div>
-      <h2
-        className="m-0 mb-[26px] font-medium"
-        style={{
-          fontSize: 36,
-          letterSpacing: "-0.025em",
-          lineHeight: 1.08,
-        }}
-      >
-        {now ? now.summary : "Open block"}
-      </h2>
-      <DayStrip events={events} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <DayStrip events={events} />
+      </div>
     </div>
   );
 }

@@ -78,7 +78,7 @@ function CalendarRow({ e }: { e: CalEvent }) {
   );
 }
 
-function CalendarSection() {
+export function CalendarSection() {
   const { data } = usePoll<CalResp>("/api/calendar", 60_000);
   const events = data && "events" in data ? data.events : [];
   const upcoming = events.filter((e) => parseEventTime(e.end) > Date.now());
@@ -147,7 +147,7 @@ function CalendarSection() {
   );
 }
 
-function InboxSection() {
+export function InboxSection() {
   const mail = useMailOverlay();
   const { data } = usePoll<GmailResp>("/api/gmail", 60_000);
   const messages = data && "messages" in data ? data.messages : [];
@@ -198,7 +198,7 @@ function InboxSection() {
   );
 }
 
-function GitHubSection() {
+export function GitHubSection() {
   const { data } = usePoll<GhResp>("/api/github", 60_000);
   if (!data || "error" in data) {
     return (
