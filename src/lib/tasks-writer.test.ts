@@ -1,14 +1,26 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { editTask } from "./tasks-writer";
+
+const holder: { vault: string } = { vault: "" };
+
+vi.mock("./config", () => ({
+  env: {
+    get VAULT_PATH() {
+      return holder.vault;
+    },
+  },
+}));
+
+const { editTask } = await import("./tasks-writer");
 
 let dir: string;
 let file: string;
 
 beforeEach(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), "taskedit-"));
+  holder.vault = dir;
   file = path.join(dir, "Inbox.md");
 });
 
