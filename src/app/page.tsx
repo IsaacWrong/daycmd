@@ -4,29 +4,80 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFocusMode, useTod, TodFrame } from "@/components/redesign/TodFrame";
 import { Masthead } from "@/components/redesign/Masthead";
-import { FocusTile } from "@/components/redesign/FocusTile";
-import {
-  ProjectsList,
-  Streaks,
-  TodayInNumbers,
-} from "@/components/redesign/LeftSpineSections";
-import { Heatmap } from "@/components/redesign/Heatmap";
-import { SectionMini } from "@/components/redesign/Section";
 import { NowHero } from "@/components/redesign/NowHero";
 import { TaskList } from "@/components/redesign/TaskList";
 import { DailyNotePreview } from "@/components/redesign/DailyNotePreview";
-import { RightStreams } from "@/components/redesign/RightStreams";
+import {
+  CalendarSection,
+  InboxSection,
+  GitHubSection,
+} from "@/components/redesign/RightStreams";
+import {
+  ProjectsList,
+  Streaks,
+} from "@/components/redesign/LeftSpineSections";
+import { Heatmap } from "@/components/redesign/Heatmap";
+import { SectionMini } from "@/components/redesign/Section";
+import {
+  DashboardNav,
+  type SectionKey,
+  SECTIONS,
+} from "@/components/redesign/DashboardNav";
 import { AgentBar } from "@/components/redesign/AgentBar";
 import { CalendarOverlayProvider } from "@/components/calendar/CalendarOverlayProvider";
 import { MailOverlayProvider } from "@/components/mail/MailOverlayProvider";
+
+const SECTION_LS = "daycmd.dashboard.section";
+const VALID = new Set<SectionKey>(SECTIONS.map((s) => s.key));
+
+function SectionView({ k }: { k: SectionKey }) {
+  switch (k) {
+    case "tasks":
+      return <TaskList />;
+    case "note":
+      return <DailyNotePreview />;
+    case "calendar":
+      return <CalendarSection />;
+    case "mail":
+      return <InboxSection />;
+    case "github":
+      return (
+        <>
+          <GitHubSection />
+          <SectionMini title="Last 14 days · commits" accent="github">
+            <Heatmap />
+          </SectionMini>
+          <Streaks />
+        </>
+      );
+    case "projects":
+      return <ProjectsList />;
+  }
+}
 
 export default function Home() {
   const tod = useTod();
   const [focus, toggleFocus] = useFocusMode();
   const [agentOpen, setAgentOpen] = useState(false);
+  const [section, setSection] = useState<SectionKey>("tasks");
   const router = useRouter();
 
-  // Bounce to /setup if VAULT_PATH or ANTHROPIC_API_KEY is missing.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SECTION_LS);
+      if (stored && VALID.has(stored as SectionKey)) {
+        setSection(stored as SectionKey);
+      }
+    } catch {}
+  }, []);
+
+  function selectSection(k: SectionKey) {
+    setSection(k);
+    try {
+      localStorage.setItem(SECTION_LS, k);
+    } catch {}
+  }
+
   useEffect(() => {
     fetch("/api/setup")
       .then((r) => r.json())
@@ -36,7 +87,6 @@ export default function Home() {
       .catch(() => {});
   }, [router]);
 
-  // Fire stale KB auto-compile sweep on mount. Server-side dedupes (5-min debounce).
   useEffect(() => {
     fetch("/api/kb/auto-compile", { method: "POST" }).catch(() => {});
   }, []);
@@ -51,37 +101,47 @@ export default function Home() {
         className="grid"
         style={{
           flex: 1,
-          gridTemplateColumns: "320px 1fr 340px",
-          gap: 56,
-          padding: "32px 56px 160px",
+          gridTemplateColumns: "minmax(220px, 1fr) 4fr",
+          gap: 40,
+          padding: "20px 56px 140px",
           minHeight: 0,
         }}
       >
         <aside
           className="scroll dimmable"
           style={{
-            paddingRight: 24,
+            overflowY: "auto",
+            paddingRight: 16,
             borderRight: "1px solid var(--rule)",
           }}
         >
-          <FocusTile />
-          <TodayInNumbers />
-          <Streaks />
-          <SectionMini title="Last 14 days · commits">
-            <Heatmap />
-          </SectionMini>
-          <ProjectsList />
+          <DashboardNav selected={section} onSelect={selectSection} />
         </aside>
 
-        <main className="scroll" style={{ overflowY: "auto", paddingRight: 8 }}>
-          <NowHero />
-          <div className="dimmable">
-            <TaskList />
-            <DailyNotePreview />
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            minWidth: 0,
+          }}
+        >
+          <div className="dimmable" style={{ paddingBottom: 4 }}>
+            <NowHero />
           </div>
-        </main>
-
-        <RightStreams />
+          <section
+            className="scroll dimmable"
+            style={{
+              overflowY: "auto",
+              paddingTop: 24,
+              paddingRight: 8,
+              flex: 1,
+              minHeight: 0,
+            }}
+          >
+            <SectionView k={section} />
+          </section>
+        </div>
       </div>
 
       <div
