@@ -11,6 +11,8 @@ import {
   CalendarSection,
   InboxSection,
   GitHubSection,
+  ErrorsSection,
+  KnowledgeSection,
 } from "@/components/redesign/RightStreams";
 import {
   ProjectsList,
@@ -23,6 +25,7 @@ import {
   type SectionKey,
   SECTIONS,
 } from "@/components/redesign/DashboardNav";
+import { Overview } from "@/components/redesign/Overview";
 import { AgentBar } from "@/components/redesign/AgentBar";
 import { CalendarOverlayProvider } from "@/components/calendar/CalendarOverlayProvider";
 import { MailOverlayProvider } from "@/components/mail/MailOverlayProvider";
@@ -30,8 +33,16 @@ import { MailOverlayProvider } from "@/components/mail/MailOverlayProvider";
 const SECTION_LS = "daycmd.dashboard.section";
 const VALID = new Set<SectionKey>(SECTIONS.map((s) => s.key));
 
-function SectionView({ k }: { k: SectionKey }) {
+function SectionView({
+  k,
+  onJump,
+}: {
+  k: SectionKey;
+  onJump: (key: SectionKey) => void;
+}) {
   switch (k) {
+    case "overview":
+      return <Overview onJump={onJump} />;
     case "tasks":
       return <TaskList />;
     case "note":
@@ -48,10 +59,13 @@ function SectionView({ k }: { k: SectionKey }) {
             <Heatmap />
           </SectionMini>
           <Streaks />
+          <ProjectsList />
         </>
       );
-    case "projects":
-      return <ProjectsList />;
+    case "errors":
+      return <ErrorsSection />;
+    case "knowledge":
+      return <KnowledgeSection />;
   }
 }
 
@@ -59,7 +73,7 @@ export default function Home() {
   const tod = useTod();
   const [focus, toggleFocus] = useFocusMode();
   const [agentOpen, setAgentOpen] = useState(false);
-  const [section, setSection] = useState<SectionKey>("tasks");
+  const [section, setSection] = useState<SectionKey>("overview");
   const router = useRouter();
 
   useEffect(() => {
@@ -139,7 +153,7 @@ export default function Home() {
               minHeight: 0,
             }}
           >
-            <SectionView k={section} />
+            <SectionView k={section} onJump={selectSection} />
           </section>
         </div>
       </div>
