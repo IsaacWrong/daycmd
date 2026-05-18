@@ -21,8 +21,10 @@ export type Attachment =
 export type Msg = {
   role: "user" | "assistant";
   content: string;
-  tools?: Array<{ name: string; ok?: boolean }>;
+  tools?: Array<{ name: string; ok?: boolean; startedAt?: number; durationMs?: number }>;
   attachments?: Attachment[];
+  startedAt?: number;
+  endedAt?: number;
 };
 
 const MESSAGES_LS_KEY = (cat: string) => `daycmd.agent.messages.${cat}`;
@@ -174,7 +176,7 @@ export function useAgent(initialCategory?: string) {
     const next: Msg[] = [
       ...existing,
       userMsg,
-      { role: "assistant", content: "", tools: [] },
+      { role: "assistant", content: "", tools: [], startedAt: Date.now() },
     ];
     messagesCache.current.set(useCategory, next);
     putStateDebounced(messagesStateKey(useCategory), next);
@@ -238,7 +240,10 @@ export function useAgent(initialCategory?: string) {
               if (!last) return prev;
               copy[copy.length - 1] = {
                 ...last,
-                tools: [...(last.tools ?? []), { name: d.name }],
+                tools: [
+                  ...(last.tools ?? []),
+                  { name: d.name, startedAt: Date.now() },
+                ],
               };
               return copy;
             });
@@ -251,7 +256,14 @@ export function useAgent(initialCategory?: string) {
               if (!last) return prev;
               const tools = [...(last.tools ?? [])];
               const idx = tools.findIndex((t) => t.name === d.name && t.ok === undefined);
-              if (idx >= 0) tools[idx] = { ...tools[idx], ok: d.ok };
+              if (idx >= 0) {
+                const t = tools[idx];
+                tools[idx] = {
+                  ...t,
+                  ok: d.ok,
+                  durationMs: t.startedAt ? Date.now() - t.startedAt : undefined,
+                };
+              }
               copy[copy.length - 1] = { ...last, tools };
               return copy;
             });
@@ -274,6 +286,7 @@ export function useAgent(initialCategory?: string) {
           copy[copy.length - 1] = {
             ...last,
             content: last.content + (last.content ? "\n\n_[stopped]_" : "_[stopped]_"),
+            endedAt: Date.now(),
           };
           return copy;
         });
@@ -283,6 +296,14 @@ export function useAgent(initialCategory?: string) {
     } finally {
       abortRef.current = null;
       setBusy(false);
+      setMessages((prev) => {
+        if (prev.length === 0) return prev;
+        const copy = [...prev];
+        const last = copy[copy.length - 1];
+        if (!last || last.role !== "assistant" || last.endedAt) return prev;
+        copy[copy.length - 1] = { ...last, endedAt: Date.now() };
+        return copy;
+      });
     }
   }
 

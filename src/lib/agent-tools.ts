@@ -28,6 +28,8 @@ import {
   listWikiPages,
   readWikiPage,
   ensureCategory,
+  wikiWrite,
+  wikiDelete,
 } from "./kb";
 import {
   getEvents,
@@ -39,6 +41,7 @@ import { getSummary as getGithub } from "./github";
 import { appendTask, markTaskDone } from "./tasks-writer";
 import { grepWiki, listOutputs } from "./kb";
 import { routeQuickCapture } from "./quick-capture";
+import { recentErrors, resolveError } from "./errors";
 
 export const tools: Anthropic.Messages.ToolUnion[] = [
   { type: "web_search_20260209", name: "web_search" },
@@ -439,6 +442,63 @@ export const tools: Anthropic.Messages.ToolUnion[] = [
     },
   },
   {
+    name: "kb_wiki_write",
+    description:
+      "Write or overwrite a wiki page in a category's wiki/ folder. Path is relative to wiki/ (e.g. 'INDEX.md', 'concepts/foo.md', 'sources/2026-05-13.md'). Use for surgical fixes between full compile passes — edit INDEX, fix a source page, patch a concept. Read the page first with kb_read_wiki_page if you're doing a partial edit. Full content replaces the file.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: { type: "string" },
+        path: {
+          type: "string",
+          description: "Path relative to wiki/, e.g. 'INDEX.md' or 'sources/2026-05-13.md'.",
+        },
+        content: { type: "string", description: "Full file contents." },
+      },
+      required: ["path", "content"],
+    },
+  },
+  {
+    name: "kb_wiki_delete",
+    description:
+      "Delete a wiki page. Path is relative to wiki/. Irreversible — use sparingly (e.g. removing a stale source page). Prefer kb_wiki_write to update content.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: { type: "string" },
+        path: { type: "string" },
+      },
+      required: ["path"],
+    },
+  },
+  {
+    name: "get_errors",
+    description:
+      "Read recent errors from the in-app error log (the 'Errors' panel in the dashboard). Returns array of {id, ts, source, message, context, resolved_at}. Use to diagnose what's broken when Isaac says 'fix the errors' / 'look at the error log'. Default returns unresolved only.",
+    input_schema: {
+      type: "object",
+      properties: {
+        limit: { type: "integer", description: "Max rows (default 30, max 100)." },
+        include_resolved: {
+          type: "boolean",
+          description: "Include already-resolved errors. Default false.",
+        },
+      },
+    },
+  },
+  {
+    name: "resolve_error",
+    description:
+      "Mark an error in the error log as resolved by id. Call after you've actually fixed the underlying issue, not just acknowledged it.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Error id from get_errors." },
+      },
+      required: ["id"],
+    },
+  },
+  {
     name: "kb_write_output",
     description:
       "Save a finished deliverable (draft, report, summary, deck outline) to a category's output/ folder. NOT for capturing source material — that's kb_ingest.",
@@ -718,6 +778,33 @@ export async function runTool(
         const category = String(input.category ?? ctx.category ?? "Personal");
         const content = await readWikiPage(category, String(input.path));
         return { ok: true, result: { category, path: String(input.path), content } };
+      }
+      case "kb_wiki_write": {
+        const category = String(input.category ?? ctx.category ?? "Personal");
+        await ensureCategory(category);
+        const r = await wikiWrite(
+          category,
+          String(input.path),
+          String(input.content),
+        );
+        return { ok: true, result: { path: r.path, category } };
+      }
+      case "kb_wiki_delete": {
+        const category = String(input.category ?? ctx.category ?? "Personal");
+        await wikiDelete(category, String(input.path));
+        return { ok: true, result: { ok: true, category, path: String(input.path) } };
+      }
+      case "get_errors": {
+        const limit = Math.max(1, Math.min(100, Number(input.limit ?? 30)));
+        const includeResolved = Boolean(input.include_resolved ?? false);
+        const errors = recentErrors(limit, includeResolved);
+        return { ok: true, result: { errors, count: errors.length } };
+      }
+      case "resolve_error": {
+        const id = String(input.id ?? "");
+        if (!id) return { ok: false, error: "id required" };
+        const ok = resolveError(id);
+        return { ok: true, result: { resolved: ok, id } };
       }
       case "kb_write_output": {
         const category = String(input.category ?? ctx.category ?? "Personal");
