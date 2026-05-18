@@ -62,12 +62,17 @@ function StatusBlock({ msg, now }: { msg: Msg; now: number }) {
 export function ThreadView({ messages, busy }: { messages: Msg[]; busy: boolean }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const now = useTicker(busy);
+  const last = messages[messages.length - 1];
+  const lastContentLen = last?.content.length ?? 0;
+  const lastToolsLen = last?.tools?.length ?? 0;
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [messages]);
+    const el = scrollRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+    if (!busy || nearBottom) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
+  }, [messages.length, lastContentLen, lastToolsLen, busy]);
   return (
     <div
       ref={scrollRef}

@@ -84,12 +84,25 @@ export function AgentBar({
     return () => cancelAnimationFrame(id);
   }, [variant, barOpen]);
 
+  const lastMsg = agent.messages[agent.messages.length - 1];
+  const lastContentLen = lastMsg?.content.length ?? 0;
+  const lastToolsLen = lastMsg?.tools?.length ?? 0;
   useEffect(() => {
     if (!barOpen) return;
     const el = bubblesScrollRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [agent.messages.length, barOpen]);
+    const nearBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+    if (!agent.busy || nearBottom) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
+  }, [
+    agent.messages.length,
+    lastContentLen,
+    lastToolsLen,
+    agent.busy,
+    barOpen,
+  ]);
 
   useEffect(() => {
     if (variant !== "wide") return;
