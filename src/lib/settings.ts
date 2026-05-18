@@ -1,6 +1,12 @@
 import { env } from "./config";
 import { db } from "./db";
 import { readStateSync, writeStateSync } from "./vault-state";
+import {
+  MODEL_CHOICES,
+  isValidModel,
+  type Effort,
+  type SkillOverride,
+} from "./skills-defs";
 
 const SETTINGS_KEY = "settings";
 
@@ -8,6 +14,8 @@ export type AppSettings = {
   budgetDailyUsd: number; // 0 = no cap
   budgetAlertPct: number; // 0-1, e.g. 0.8 = warn at 80%
   defaultCategory: string;
+  defaultChatModel: string; // model used when no skill is selected
+  skillOverrides: Record<string, SkillOverride>;
 };
 
 export type DiscordSettings = {
@@ -21,7 +29,44 @@ const DEFAULTS: AppSettings = {
   budgetDailyUsd: 0,
   budgetAlertPct: 0.8,
   defaultCategory: "Personal",
+  defaultChatModel: "claude-sonnet-4-6",
+  skillOverrides: {},
 };
+
+const VALID_EFFORTS: ReadonlySet<Effort> = new Set([
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
+
+function sanitizeOverride(raw: unknown): SkillOverride | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const out: SkillOverride = {};
+  if (typeof o.model === "string" && isValidModel(o.model)) out.model = o.model;
+  if (typeof o.effort === "string" && VALID_EFFORTS.has(o.effort as Effort)) {
+    out.effort = o.effort as Effort;
+  }
+  if (typeof o.maxTokens === "number" && o.maxTokens > 0 && o.maxTokens <= 64000) {
+    out.maxTokens = Math.floor(o.maxTokens);
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+function sanitizeOverrides(raw: unknown): Record<string, SkillOverride> {
+  if (!raw || typeof raw !== "object") return {};
+  const out: Record<string, SkillOverride> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const o = sanitizeOverride(v);
+    if (o) out[k] = o;
+  }
+  return out;
+}
+
+// Re-export so callers don't need to import skills-defs separately.
+export { MODEL_CHOICES };
 
 // Discord bot token stays in the local DB — it's a secret, not config we want
 // flowing through Obsidian Sync to every device.
@@ -31,6 +76,8 @@ type StoredSettings = {
   budgetDailyUsd?: number;
   budgetAlertPct?: number;
   defaultCategory?: string;
+  defaultChatModel?: string;
+  skillOverrides?: Record<string, SkillOverride>;
   discord?: {
     watchedChannelIds?: string[];
     defaultChannelId?: string;
@@ -142,10 +189,16 @@ function parseStringList(value: string | null): string[] {
 
 export function getSettings(): AppSettings {
   const s = loadStored();
+  const storedChatModel = s.defaultChatModel;
   return {
     budgetDailyUsd: s.budgetDailyUsd ?? DEFAULTS.budgetDailyUsd,
     budgetAlertPct: s.budgetAlertPct ?? DEFAULTS.budgetAlertPct,
     defaultCategory: s.defaultCategory ?? DEFAULTS.defaultCategory,
+    defaultChatModel:
+      storedChatModel && isValidModel(storedChatModel)
+        ? storedChatModel
+        : DEFAULTS.defaultChatModel,
+    skillOverrides: s.skillOverrides ?? DEFAULTS.skillOverrides,
   };
 }
 
@@ -157,6 +210,12 @@ export function updateSettings(patch: Partial<AppSettings>): AppSettings {
     if (patch.budgetAlertPct !== undefined)
       next.budgetAlertPct = Math.max(0, Math.min(1, patch.budgetAlertPct));
     if (patch.defaultCategory !== undefined) next.defaultCategory = patch.defaultCategory;
+    if (patch.defaultChatModel !== undefined && isValidModel(patch.defaultChatModel)) {
+      next.defaultChatModel = patch.defaultChatModel;
+    }
+    if (patch.skillOverrides !== undefined) {
+      next.skillOverrides = sanitizeOverrides(patch.skillOverrides);
+    }
     return next;
   });
   return getSettings();

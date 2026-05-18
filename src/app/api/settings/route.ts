@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSettings, updateSettings } from "@/lib/settings";
+import type { SkillOverride } from "@/lib/skills-defs";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,8 @@ export async function PATCH(req: Request) {
     budgetDailyUsd: number;
     budgetAlertPct: number;
     defaultCategory: string;
+    defaultChatModel: string;
+    skillOverrides: Record<string, SkillOverride>;
   }>;
   return NextResponse.json(updateSettings(body));
 }

@@ -78,9 +78,7 @@ export function TriagePanel({ onClose }: Props) {
           messages: apiMessages,
           category: skill.category ?? "Personal",
           ...(containerIdRef.current ? { containerId: containerIdRef.current } : {}),
-          ...(skill.model ? { model: skill.model } : {}),
-          ...(skill.effort ? { effort: skill.effort } : {}),
-          ...(skill.maxTokens ? { maxTokens: skill.maxTokens } : {}),
+          ...(skill.id ? { skillId: skill.id } : {}),
         }),
         signal: controller.signal,
       });

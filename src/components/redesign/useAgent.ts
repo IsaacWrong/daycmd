@@ -158,7 +158,10 @@ export function useAgent(initialCategory?: string) {
     }
   }, [messages, category, hydrated]);
 
-  async function send(content: string, opts: { attachments?: Attachment[]; skill?: SkillDef } = {}) {
+  async function send(
+    content: string,
+    opts: { attachments?: Attachment[]; skill?: SkillDef; model?: string } = {},
+  ) {
     const attachments = opts.attachments ?? [];
     if (!content.trim() && attachments.length === 0) return;
     if (busy) return;
@@ -197,9 +200,8 @@ export function useAgent(initialCategory?: string) {
           messages: apiMessages,
           category: useCategory,
           ...(containerId ? { containerId } : {}),
-          ...(opts.skill?.model ? { model: opts.skill.model } : {}),
-          ...(opts.skill?.effort ? { effort: opts.skill.effort } : {}),
-          ...(opts.skill?.maxTokens ? { maxTokens: opts.skill.maxTokens } : {}),
+          ...(opts.skill?.id ? { skillId: opts.skill.id } : {}),
+          ...(opts.model ? { model: opts.model } : {}),
         }),
         signal: controller.signal,
       });

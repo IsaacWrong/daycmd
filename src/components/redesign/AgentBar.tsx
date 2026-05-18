@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { SKILLS, type SkillDef } from "@/lib/skills-defs";
+import { SKILLS, MODEL_CHOICES, isValidModel, type SkillDef } from "@/lib/skills-defs";
 import { Paperclip, Sun } from "./Glyph";
 import { useAgent, RUN_SKILL_EVENT, type Attachment } from "./useAgent";
+
+const CHAT_MODEL_LS_KEY = "daycmd.chat.model";
 import { fileToAttachment } from "./agent-bar/attachments";
 import { ThreadView } from "./agent-bar/ThreadView";
 import { SkillStrip } from "./agent-bar/SkillStrip";
@@ -31,6 +33,32 @@ export function AgentBar({
   const agent = useAgent(category);
   const [input, setInput] = useState("");
   const [catOpen, setCatOpen] = useState(false);
+  const [chatModel, setChatModelState] = useState<string>("claude-sonnet-4-6");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem(CHAT_MODEL_LS_KEY);
+    if (stored && isValidModel(stored)) {
+      setChatModelState(stored);
+      return;
+    }
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((s: { defaultChatModel?: string }) => {
+        if (s.defaultChatModel && isValidModel(s.defaultChatModel)) {
+          setChatModelState(s.defaultChatModel);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  function setChatModel(m: string) {
+    if (!isValidModel(m)) return;
+    setChatModelState(m);
+    try {
+      localStorage.setItem(CHAT_MODEL_LS_KEY, m);
+    } catch {}
+  }
   const [pending, setPending] = useState<Attachment[]>([]);
   const [attachError, setAttachError] = useState<string | null>(null);
   const [barOpenLocal, setBarOpenLocal] = useState(false);
@@ -164,7 +192,10 @@ export function AgentBar({
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() && pending.length === 0) return;
-    agent.send(input, pending.length ? { attachments: pending } : {});
+    agent.send(input, {
+      model: chatModel,
+      ...(pending.length ? { attachments: pending } : {}),
+    });
     setInput("");
     setPending([]);
     setAttachError(null);
@@ -253,6 +284,32 @@ export function AgentBar({
     />
   );
 
+  const modelPicker = (
+    <select
+      value={chatModel}
+      onChange={(e) => setChatModel(e.target.value)}
+      title="Free-form chat model (skills use their own settings)"
+      disabled={agent.busy}
+      className="t-mono"
+      style={{
+        background: "transparent",
+        border: "1px solid var(--rule)",
+        borderRadius: 4,
+        color: "var(--fg-soft)",
+        fontSize: 10.5,
+        padding: "2px 4px",
+        cursor: agent.busy ? "default" : "pointer",
+        outline: "none",
+      }}
+    >
+      {MODEL_CHOICES.map((m) => (
+        <option key={m.id} value={m.id}>
+          {m.label}
+        </option>
+      ))}
+    </select>
+  );
+
   const inputField = (
     <input
       ref={inputRef}
@@ -315,6 +372,7 @@ export function AgentBar({
               ✦
             </span>
             {inputField}
+            {modelPicker}
             {agent.busy ? (
               <button
                 type="button"
@@ -683,6 +741,7 @@ export function AgentBar({
             />
             {inputField}
             <div className="flex items-center gap-2">
+              {modelPicker}
               <button
                 type="button"
                 onClick={openPicker}

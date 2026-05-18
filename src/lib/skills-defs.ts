@@ -1,3 +1,5 @@
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+
 export type SkillDef = {
   id: string;
   label: string;
@@ -5,9 +7,39 @@ export type SkillDef = {
   prompt: string;
   category?: string;
   model?: string;
-  effort?: "low" | "medium" | "high" | "xhigh" | "max";
+  effort?: Effort;
   maxTokens?: number;
 };
+
+export type SkillOverride = {
+  model?: string;
+  effort?: Effort;
+  maxTokens?: number;
+};
+
+export const MODEL_CHOICES: Array<{ id: string; label: string; tier: "cheap" | "balanced" | "premium" }> = [
+  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5", tier: "cheap" },
+  { id: "claude-sonnet-4-6", label: "Sonnet 4.6", tier: "balanced" },
+  { id: "claude-opus-4-7", label: "Opus 4.7", tier: "premium" },
+];
+
+export function isValidModel(m: string): boolean {
+  return MODEL_CHOICES.some((c) => c.id === m);
+}
+
+export function resolveSkill(
+  skill: SkillDef,
+  overrides?: Record<string, SkillOverride>,
+): SkillDef {
+  const o = overrides?.[skill.id];
+  if (!o) return skill;
+  return {
+    ...skill,
+    ...(o.model ? { model: o.model } : {}),
+    ...(o.effort ? { effort: o.effort } : {}),
+    ...(o.maxTokens ? { maxTokens: o.maxTokens } : {}),
+  };
+}
 
 export const SKILLS: SkillDef[] = [
   {
@@ -70,7 +102,7 @@ export const SKILLS: SkillDef[] = [
     label: "Daily Reflection",
     description: "Append journal prompts to today's daily note",
     category: "Personal",
-    model: "claude-sonnet-4-6",
+    model: "claude-haiku-4-5-20251001",
     effort: "low",
     maxTokens: 3000,
     prompt:
@@ -81,7 +113,7 @@ export const SKILLS: SkillDef[] = [
     label: "Route Quick Capture",
     description: "Process #tagged lines in daily note Quick Capture into category raw/",
     category: "Personal",
-    model: "claude-sonnet-4-6",
+    model: "claude-haiku-4-5-20251001",
     effort: "low",
     maxTokens: 2000,
     prompt:

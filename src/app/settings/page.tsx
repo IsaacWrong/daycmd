@@ -4,12 +4,23 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { TodFrame, useFocusMode, useTod } from "@/components/redesign/TodFrame";
 import { Section } from "@/components/redesign/Section";
+import {
+  MODEL_CHOICES,
+  SKILLS,
+  resolveSkill,
+  type Effort,
+  type SkillOverride,
+} from "@/lib/skills-defs";
 
 type Settings = {
   budgetDailyUsd: number;
   budgetAlertPct: number;
   defaultCategory: string;
+  defaultChatModel: string;
+  skillOverrides: Record<string, SkillOverride>;
 };
+
+const EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"];
 
 type GoogleStatus = { configured: boolean; connected: boolean };
 
@@ -422,17 +433,156 @@ export default function SettingsPage() {
               </p>
             </Section>
 
-            <Section eyebrow="Models" title="Per-skill defaults" accent="github">
+            <Section eyebrow="Models" title="Free-form chat" accent="github">
               <p className="text-[12.5px] text-fg-soft mb-3" style={{ letterSpacing: "-0.005em" }}>
-                Configured in <code className="t-mono">src/lib/skills-defs.ts</code> (file-based for now). Sonnet 4.6 for routine, Opus 4.7 for synthesis.
+                Default model when no skill is running. AgentBar dropdown overrides per session.
               </p>
-              <ul className="t-mono space-y-1.5" style={{ fontSize: 11.5, color: "var(--fg-soft)" }}>
-                <li>Morning Brief · Triage · Plan · Stale · Reflect · Capture → claude-sonnet-4-6 / medium</li>
-                <li>Weekly Review → claude-opus-4-7 / high</li>
-                <li>Research Topic → claude-opus-4-7 / xhigh</li>
-                <li>Free-form chat → claude-opus-4-7 / high</li>
-                <li>KB Compile · Lint · Automations → claude-sonnet-4-6 / medium-high</li>
-              </ul>
+              <Field label="Default chat model">
+                <select
+                  value={settings.defaultChatModel}
+                  onChange={(e) => save({ defaultChatModel: e.target.value })}
+                  style={FIELD_STYLE}
+                >
+                  {MODEL_CHOICES.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label} · {m.tier}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </Section>
+
+            <Section eyebrow="Models" title="Per-skill overrides" accent="github">
+              <p className="text-[12.5px] text-fg-soft mb-3" style={{ letterSpacing: "-0.005em" }}>
+                Override model / effort / max tokens per skill. Empty cell = use code default from
+                <code className="t-mono"> src/lib/skills-defs.ts</code>.
+              </p>
+              <div style={{ overflowX: "auto" }}>
+                <table
+                  className="t-mono"
+                  style={{
+                    width: "100%",
+                    fontSize: 12,
+                    borderCollapse: "collapse",
+                  }}
+                >
+                  <thead>
+                    <tr style={{ color: "var(--fg-soft)", textAlign: "left" }}>
+                      <th style={{ padding: "6px 8px 6px 0", fontWeight: 400 }}>Skill</th>
+                      <th style={{ padding: "6px 8px", fontWeight: 400 }}>Model</th>
+                      <th style={{ padding: "6px 8px", fontWeight: 400 }}>Effort</th>
+                      <th style={{ padding: "6px 8px", fontWeight: 400 }}>Max tokens</th>
+                      <th style={{ padding: "6px 0 6px 8px", fontWeight: 400 }} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {SKILLS.map((skill) => {
+                      const ov = settings.skillOverrides[skill.id] ?? {};
+                      const eff = resolveSkill(skill, settings.skillOverrides);
+                      const setOverride = (patch: SkillOverride | null) => {
+                        const next = { ...settings.skillOverrides };
+                        if (!patch || Object.keys(patch).length === 0) {
+                          delete next[skill.id];
+                        } else {
+                          next[skill.id] = { ...ov, ...patch };
+                          // Drop empty fields.
+                          for (const k of Object.keys(next[skill.id]) as Array<keyof SkillOverride>) {
+                            if (next[skill.id][k] === undefined || next[skill.id][k] === "") {
+                              delete next[skill.id][k];
+                            }
+                          }
+                          if (Object.keys(next[skill.id]).length === 0) delete next[skill.id];
+                        }
+                        save({ skillOverrides: next });
+                      };
+                      const cell: React.CSSProperties = {
+                        padding: "6px 8px",
+                        borderTop: "1px solid var(--rule)",
+                      };
+                      return (
+                        <tr key={skill.id}>
+                          <td style={{ ...cell, padding: "6px 8px 6px 0" }}>
+                            <span style={{ color: "var(--fg)" }}>{skill.label}</span>
+                            <span style={{ color: "var(--fg-soft)", marginLeft: 8 }}>
+                              {skill.id}
+                            </span>
+                          </td>
+                          <td style={cell}>
+                            <select
+                              value={ov.model ?? ""}
+                              onChange={(e) =>
+                                setOverride({ model: e.target.value || undefined })
+                              }
+                              style={{ ...FIELD_STYLE, fontSize: 12, padding: "3px 6px" }}
+                              title={`default: ${skill.model ?? "(none)"}`}
+                            >
+                              <option value="">default ({skill.model ?? "—"})</option>
+                              {MODEL_CHOICES.map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td style={cell}>
+                            <select
+                              value={ov.effort ?? ""}
+                              onChange={(e) =>
+                                setOverride({ effort: (e.target.value || undefined) as Effort | undefined })
+                              }
+                              style={{ ...FIELD_STYLE, fontSize: 12, padding: "3px 6px" }}
+                              title={`default: ${skill.effort ?? "(none)"}`}
+                            >
+                              <option value="">default ({skill.effort ?? "—"})</option>
+                              {EFFORTS.map((e) => (
+                                <option key={e} value={e}>
+                                  {e}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td style={cell}>
+                            <input
+                              type="number"
+                              min={0}
+                              step={500}
+                              value={ov.maxTokens ?? ""}
+                              placeholder={String(skill.maxTokens ?? "")}
+                              onChange={(e) => {
+                                const n = Number(e.target.value);
+                                setOverride({ maxTokens: n > 0 ? n : undefined });
+                              }}
+                              style={{ ...FIELD_STYLE, fontSize: 12, padding: "3px 6px", width: 90 }}
+                            />
+                          </td>
+                          <td style={{ ...cell, textAlign: "right", color: "var(--fg-soft)" }}>
+                            {(ov.model || ov.effort || ov.maxTokens) && (
+                              <button
+                                type="button"
+                                onClick={() => setOverride(null)}
+                                title="Clear override"
+                                style={{
+                                  background: "transparent",
+                                  border: 0,
+                                  color: "var(--fg-soft)",
+                                  cursor: "pointer",
+                                  fontSize: 11,
+                                  padding: 0,
+                                }}
+                              >
+                                reset
+                              </button>
+                            )}
+                            <span style={{ marginLeft: 8, fontSize: 10 }}>
+                              → {eff.model ?? "—"} / {eff.effort ?? "—"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </Section>
 
             <Section eyebrow="Off-dashboard" title="Other surfaces" accent="obsidian">
