@@ -407,7 +407,7 @@ export function AgentBar({
                 <button
                   type="button"
                   onClick={openPicker}
-                  title="Attach files"
+                  aria-label="Attach files"
                   className="inline-flex items-center text-fg-soft hover:text-fg"
                   style={{
                     background: "transparent",
@@ -569,10 +569,10 @@ export function AgentBar({
           className="agent-pill-enter"
           style={
             {
-              position: barMounted ? "absolute" : "static",
-              alignSelf: "flex-end",
-              right: 0,
-              bottom: 0,
+              position: "fixed",
+              right: 56,
+              bottom: 28,
+              zIndex: 51,
               width: 62,
               height: 62,
               borderRadius: 999,
@@ -758,7 +758,7 @@ export function AgentBar({
               <button
                 type="button"
                 onClick={openPicker}
-                title="Attach files"
+                aria-label="Attach files"
                 className="inline-flex items-center justify-center text-fg-soft hover:text-fg"
                 style={{
                   width: 26,
