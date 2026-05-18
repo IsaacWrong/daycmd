@@ -73,6 +73,16 @@ export default function Home() {
   const tod = useTod();
   const [focus, toggleFocus] = useFocusMode();
   const [agentOpen, setAgentOpen] = useState(false);
+  const [agentWidthExpanded, setAgentWidthExpanded] = useState(false);
+
+  useEffect(() => {
+    if (agentOpen) {
+      setAgentWidthExpanded(true);
+      return;
+    }
+    const t = setTimeout(() => setAgentWidthExpanded(false), 540);
+    return () => clearTimeout(t);
+  }, [agentOpen]);
   const [section, setSection] = useState<SectionKey>("overview");
   const router = useRouter();
 
@@ -165,7 +175,7 @@ export default function Home() {
           left: 56,
           right: 56,
           bottom: 28,
-          top: agentOpen ? 56 : undefined,
+          top: agentWidthExpanded ? 56 : undefined,
           zIndex: 50,
           display: "flex",
           flexDirection: "column",
@@ -179,11 +189,11 @@ export default function Home() {
           style={{
             pointerEvents: "auto",
             width: "100%",
-            maxWidth: agentOpen ? "70%" : "100%",
-            alignSelf: agentOpen ? "center" : "stretch",
+            maxWidth: agentWidthExpanded ? "70%" : "100%",
+            alignSelf: agentWidthExpanded ? "center" : "stretch",
             display: "flex",
             flexDirection: "column",
-            flex: agentOpen ? "1 1 auto" : "0 0 auto",
+            flex: agentWidthExpanded ? "1 1 auto" : "0 0 auto",
             minHeight: 0,
             justifyContent: "flex-end",
           }}
