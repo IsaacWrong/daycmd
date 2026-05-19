@@ -5,7 +5,11 @@ import path from "node:path";
 import { env } from "./config";
 
 const STATE_SUBDIR = path.join(".obsidian", "daycmd");
-const LOGS_SUBDIR = "logs";
+// Logs live outside .obsidian/ so Obsidian Sync replicates them without
+// requiring the user to enable "Sync all other types of files" under the
+// hidden plugin-config folder.
+const LOGS_SUBDIR = path.join("daycmd", "logs");
+const LEGACY_LOGS_SUBDIR = path.join(".obsidian", "daycmd", "logs");
 
 function stateRoot(): string {
   if (!env.VAULT_PATH) throw new Error("VAULT_PATH not configured");
@@ -20,12 +24,75 @@ function deviceId(): string {
 }
 
 function logsRoot(): string {
-  return path.join(stateRoot(), LOGS_SUBDIR);
+  if (!env.VAULT_PATH) throw new Error("VAULT_PATH not configured");
+  return path.join(env.VAULT_PATH, LOGS_SUBDIR);
+}
+
+function legacyLogsRoot(): string | null {
+  if (!env.VAULT_PATH) return null;
+  return path.join(env.VAULT_PATH, LEGACY_LOGS_SUBDIR);
 }
 
 function deviceLogPath(table: string): string {
   if (!/^[A-Za-z0-9._-]+$/.test(table)) throw new Error("invalid log table");
   return path.join(logsRoot(), deviceId(), `${table}.ndjson`);
+}
+
+// One-time migration: move this device's logs from the legacy
+// .obsidian/daycmd/logs/<device>/ path to <vault>/daycmd/logs/<device>/.
+// Each device migrates its own folder independently; Obsidian Sync then
+// replicates the new location to peers. Idempotent and best-effort.
+let migrationAttempted = false;
+function migrateLegacyLogs(): void {
+  if (migrationAttempted) return;
+  migrationAttempted = true;
+  if (!env.VAULT_PATH) return;
+  const legacy = legacyLogsRoot();
+  if (!legacy) return;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(legacy, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const oldDir = path.join(legacy, entry.name);
+    const newDir = path.join(logsRoot(), entry.name);
+    try {
+      fs.mkdirSync(path.dirname(newDir), { recursive: true });
+      if (!fs.existsSync(newDir)) {
+        fs.renameSync(oldDir, newDir);
+        continue;
+      }
+      // Destination already exists — append legacy NDJSON contents into the
+      // new files line-by-line, then remove the legacy dir. Order doesn't
+      // matter for downstream aggregation (records are grouped by timestamp).
+      const files = fs.readdirSync(oldDir, { withFileTypes: true });
+      for (const f of files) {
+        if (!f.isFile() || !f.name.endsWith(".ndjson")) continue;
+        const src = path.join(oldDir, f.name);
+        const dst = path.join(newDir, f.name);
+        try {
+          const data = fs.readFileSync(src, "utf8");
+          if (data) {
+            const suffix = data.endsWith("\n") ? "" : "\n";
+            fs.appendFileSync(dst, `${data}${suffix}`, "utf8");
+          }
+          fs.unlinkSync(src);
+        } catch {
+          // best-effort: skip files we can't read or write
+        }
+      }
+      try {
+        fs.rmdirSync(oldDir);
+      } catch {
+        // non-empty or permission issue — leave behind
+      }
+    } catch {
+      // best-effort — never let migration crash a request
+    }
+  }
 }
 
 // Reject anything that escapes the state root or smells like a traversal attempt.
@@ -110,6 +177,7 @@ export function deleteStateSync(key: string): void {
 
 export function appendLog(table: string, record: unknown): void {
   if (!env.VAULT_PATH) return;
+  migrateLegacyLogs();
   const file = deviceLogPath(table);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.appendFileSync(file, `${JSON.stringify(record)}\n`, "utf8");
@@ -120,6 +188,7 @@ export type LogRecord<T> = T & { _device: string };
 export function readAllLogs<T = unknown>(table: string): Array<LogRecord<T>> {
   if (!env.VAULT_PATH) return [];
   if (!/^[A-Za-z0-9._-]+$/.test(table)) return [];
+  migrateLegacyLogs();
   const root = logsRoot();
   let devices: string[] = [];
   try {
@@ -158,6 +227,7 @@ export function rewriteOwnLog<T = unknown>(
   predicate: (record: T) => boolean,
 ): void {
   if (!env.VAULT_PATH) return;
+  migrateLegacyLogs();
   const file = deviceLogPath(table);
   let raw: string;
   try {

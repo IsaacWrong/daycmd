@@ -40,6 +40,7 @@ type UsageResp = {
   today: { cost: number };
   month: { cost: number };
   daily: { date: string; cost?: number; tokens: number }[];
+  vaultConfigured?: boolean;
 };
 type HeatResp = { days: number[] };
 type DailyResp = { exists: boolean; content: string };
@@ -610,8 +611,37 @@ export function Overview({
     }
   }
 
+  const vaultMissing = !!usage && usage.vaultConfigured === false;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 44 }}>
+      {vaultMissing && (
+        <div
+          className="t-mono"
+          style={{
+            fontSize: 11,
+            color: "var(--c-error)",
+            padding: "8px 10px",
+            border: "1px dashed var(--c-error)",
+            borderRadius: 4,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+          }}
+        >
+          <span>
+            VAULT_PATH not set — AI spend, tasks, and notes won&apos;t persist or
+            sync. Configure in <code>.env.local</code> and restart the server.
+          </span>
+          <a
+            href="/settings"
+            style={{ color: "var(--c-agent)", whiteSpace: "nowrap" }}
+          >
+            settings →
+          </a>
+        </div>
+      )}
       {/* Focus card — compact AI surface */}
       <section
         className="dimmable"
