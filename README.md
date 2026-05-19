@@ -147,11 +147,12 @@ Next.js 16 · React 19 · TypeScript · Tailwind v4 (`@theme inline` design toke
 
 ## Roadmap (rough, in priority order)
 
-- macOS launchd job so 06:00 compile/lint survives sleep
 - Automations management page
 - Idea capture modal (⌘K)
 - Real Stripe + Analytics OAuth for project hero stats
 - In-app PR / issue drawer
+
+A bundled launchd plist (`scripts/com.daycmd.server.plist`) keeps the dev server alive on port `3210` so the 06:00 KB compile + lint cron survives sleep.
 
 ## Safety / cost
 
