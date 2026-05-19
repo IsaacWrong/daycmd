@@ -86,9 +86,15 @@ export function ThreadView({ threadId, onClose }: Props) {
     [allLabels, thread],
   );
   const [labelPickerOpen, setLabelPickerOpen] = useState(false);
+  const [labelFilter, setLabelFilter] = useState("");
   const pickerRef = useRef<HTMLDivElement>(null);
+  const labelSearchRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (!labelPickerOpen) return;
+    if (!labelPickerOpen) {
+      setLabelFilter("");
+      return;
+    }
+    labelSearchRef.current?.focus();
     function onClick(e: MouseEvent) {
       if (!pickerRef.current?.contains(e.target as Node)) {
         setLabelPickerOpen(false);
@@ -97,6 +103,11 @@ export function ThreadView({ threadId, onClose }: Props) {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [labelPickerOpen]);
+  const filteredAddable = useMemo(() => {
+    const q = labelFilter.trim().toLowerCase();
+    if (!q) return addableLabels;
+    return addableLabels.filter((l) => l.name.toLowerCase().includes(q));
+  }, [addableLabels, labelFilter]);
 
   if (error) {
     return (
@@ -216,12 +227,34 @@ export function ThreadView({ threadId, onClose }: Props) {
               }}
               className="scroll"
             >
+              <input
+                ref={labelSearchRef}
+                value={labelFilter}
+                onChange={(e) => setLabelFilter(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setLabelPickerOpen(false);
+                  } else if (e.key === "Enter" && filteredAddable[0]) {
+                    const first = filteredAddable[0];
+                    runAction(async () => {
+                      await setThreadLabel(thread.id, first.id, true);
+                      setLabelPickerOpen(false);
+                    });
+                  }
+                }}
+                placeholder="Search labels…"
+                className="cal-input"
+                style={{ width: "100%", marginBottom: 4 }}
+              />
               {addableLabels.length === 0 && (
                 <div className="text-fg-soft text-[12px] p-2">
                   All labels applied.
                 </div>
               )}
-              {addableLabels.map((l) => (
+              {addableLabels.length > 0 && filteredAddable.length === 0 && (
+                <div className="text-fg-soft text-[12px] p-2">No match.</div>
+              )}
+              {filteredAddable.map((l) => (
                 <button
                   key={l.id}
                   onClick={() =>

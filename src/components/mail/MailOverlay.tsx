@@ -77,10 +77,16 @@ export function MailOverlay({ open, onClose, initialThreadId }: Props) {
   );
 
   const [labelMenuOpen, setLabelMenuOpen] = useState(false);
+  const [labelMenuFilter, setLabelMenuFilter] = useState("");
   const labelMenuRef = useRef<HTMLDivElement>(null);
+  const labelMenuSearchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!labelMenuOpen) return;
+    if (!labelMenuOpen) {
+      setLabelMenuFilter("");
+      return;
+    }
+    labelMenuSearchRef.current?.focus();
     function onClick(e: MouseEvent) {
       if (!labelMenuRef.current?.contains(e.target as Node)) {
         setLabelMenuOpen(false);
@@ -89,6 +95,12 @@ export function MailOverlay({ open, onClose, initialThreadId }: Props) {
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
   }, [labelMenuOpen]);
+
+  const filteredUserLabels = useMemo(() => {
+    const q = labelMenuFilter.trim().toLowerCase();
+    if (!q) return userLabels;
+    return userLabels.filter((l) => l.name.toLowerCase().includes(q));
+  }, [userLabels, labelMenuFilter]);
 
   const activeLabelName =
     view.kind === "label"
@@ -236,12 +248,32 @@ export function MailOverlay({ open, onClose, initialThreadId }: Props) {
                 }}
                 className="scroll"
               >
+                <input
+                  ref={labelMenuSearchRef}
+                  value={labelMenuFilter}
+                  onChange={(e) => setLabelMenuFilter(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      setLabelMenuOpen(false);
+                    } else if (e.key === "Enter" && filteredUserLabels[0]) {
+                      const first = filteredUserLabels[0];
+                      setView({ kind: "label", labelId: first.id, threadId: null });
+                      setLabelMenuOpen(false);
+                    }
+                  }}
+                  placeholder="Search labels…"
+                  className="cal-input"
+                  style={{ width: "100%", marginBottom: 4 }}
+                />
                 {userLabels.length === 0 && (
                   <div className="text-fg-soft text-[12px] p-2">
                     No user labels in Gmail.
                   </div>
                 )}
-                {userLabels.map((l) => (
+                {userLabels.length > 0 && filteredUserLabels.length === 0 && (
+                  <div className="text-fg-soft text-[12px] p-2">No match.</div>
+                )}
+                {filteredUserLabels.map((l) => (
                   <button
                     key={l.id}
                     onClick={() => {
