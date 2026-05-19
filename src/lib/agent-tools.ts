@@ -7,12 +7,12 @@ import { getAllTasks, readDailyNote, writeDailyNote, dailyNotePath } from "./obs
 import {
   getInbox,
   getMessageDetail,
-  archiveMessage,
-  markRead,
-  markUnread,
-  starMessage,
-  unstarMessage,
-  trashMessage,
+  archiveThread,
+  markThreadRead,
+  markThreadUnread,
+  starThread,
+  unstarThread,
+  trashThread,
   createDraft,
   createReplyDraft,
   sendEmail,
@@ -599,27 +599,33 @@ export async function runTool(
         return { ok: true, result: detail };
       }
       case "gmail_archive": {
-        const r = await archiveMessage(String(input.message_id));
+        const { threadId } = await getMessageDetail(String(input.message_id));
+        const r = await archiveThread(threadId);
         return { ok: true, result: r };
       }
       case "gmail_mark_read": {
-        const r = await markRead(String(input.message_id));
+        const { threadId } = await getMessageDetail(String(input.message_id));
+        const r = await markThreadRead(threadId);
         return { ok: true, result: r };
       }
       case "gmail_mark_unread": {
-        const r = await markUnread(String(input.message_id));
+        const { threadId } = await getMessageDetail(String(input.message_id));
+        const r = await markThreadUnread(threadId);
         return { ok: true, result: r };
       }
       case "gmail_star": {
-        const r = await starMessage(String(input.message_id));
+        const { threadId } = await getMessageDetail(String(input.message_id));
+        const r = await starThread(threadId);
         return { ok: true, result: r };
       }
       case "gmail_unstar": {
-        const r = await unstarMessage(String(input.message_id));
+        const { threadId } = await getMessageDetail(String(input.message_id));
+        const r = await unstarThread(threadId);
         return { ok: true, result: r };
       }
       case "gmail_trash": {
-        const r = await trashMessage(String(input.message_id));
+        const { threadId } = await getMessageDetail(String(input.message_id));
+        const r = await trashThread(threadId);
         return { ok: true, result: r };
       }
       case "gmail_create_draft": {
