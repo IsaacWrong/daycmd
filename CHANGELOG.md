@@ -7,6 +7,13 @@ contain breaking changes.
 
 ## [Unreleased]
 
+### Added
+
+- `.github/FUNDING.yml` — GitHub Sponsors + Buy Me a Coffee links surface the repo's Sponsor button.
+- `.github/PULL_REQUEST_TEMPLATE.md` — summary / test plan / checklist tied to `CONTRIBUTING.md`.
+- `.github/dependabot.yml` — weekly grouped npm + github-actions updates; major bumps for `next` / `react` / `react-dom` land separately.
+- README **Support the project** section.
+
 ## [0.1.1] - 2026-05-19
 
 ### Fixed

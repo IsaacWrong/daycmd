@@ -163,6 +163,14 @@ A bundled launchd plist template (`scripts/com.daycmd.server.plist.example`) kee
 
 Pre-1.0. Issues and PRs welcome — keep them small and focused. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for dev setup, patterns, and conventions.
 
+## Support the project
+
+Daycmd is MIT-licensed and built in spare hours. If it's earned a spot in your new-tab page, you can help keep it that way:
+
+- [GitHub Sponsors](https://github.com/sponsors/IsaacWrong) — recurring, GitHub takes no cut.
+- [Buy Me a Coffee](https://www.buymeacoffee.com/isaacwrong) — one-time tip.
+- Star the repo, file a thoughtful issue, or send a small focused PR — equally appreciated and arguably more useful.
+
 ## License
 
 MIT. See `LICENSE`.
