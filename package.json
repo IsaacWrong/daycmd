@@ -13,7 +13,8 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint .",
     "video:studio": "remotion studio remotion/index.ts",
-    "video:render": "remotion render hero docs/hero.mp4 --codec h264 --crf 22"
+    "video:render": "remotion render hero docs/hero.mp4 --codec h264 --crf 22",
+    "video:tutorials": "bash scripts/render-tutorials.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.2",

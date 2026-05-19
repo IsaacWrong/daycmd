@@ -116,6 +116,8 @@ Open `http://localhost:3000/setup`. The first-run wizard writes the rest of your
 
 Once `/setup` shows **ready**, open `http://localhost:3000` and pin as your new-tab page.
 
+> **Short setup walkthroughs:** see [`docs/TUTORIALS.md`](docs/TUTORIALS.md) — animated GIFs for the budget cap, Google OAuth, GitHub PAT, vault swap, agent skills, and the KB compile flow.
+
 > **Prefer to edit by hand?** `cp .env.local.example .env.local` and fill in `VAULT_PATH` + `ANTHROPIC_API_KEY` at minimum.
 >
 > **Don't have an Obsidian vault?** The bundled [`examples/sample-vault/`](examples/sample-vault/) is the safest starting point. The agent will write into it as you use it — copy first if you want to keep the sample pristine.
