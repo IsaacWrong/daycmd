@@ -152,7 +152,7 @@ Next.js 16 · React 19 · TypeScript · Tailwind v4 (`@theme inline` design toke
 - Real Stripe + Analytics OAuth for project hero stats
 - In-app PR / issue drawer
 
-A bundled launchd plist (`scripts/com.daycmd.server.plist`) keeps the dev server alive on port `3210` so the 06:00 KB compile + lint cron survives sleep.
+A bundled launchd plist template (`scripts/com.daycmd.server.plist.example`) keeps the dev server alive on port `3210` so the 06:00 KB compile + lint cron survives sleep. Materialize w/ `sed` (paths inside the example file's header) and `launchctl load` it.
 
 ## Safety / cost
 

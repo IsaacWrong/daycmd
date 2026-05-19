@@ -1,4 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd job that keeps `npm run start:prod` (port 3210) alive so the
+  06:00 KB compile + 06:30 lint cron survives sleep.
+
+  Materialize:
+
+    sed \
+      -e "s|__USER_HOME__|$HOME|g" \
+      -e "s|__REPO_PATH__|$PWD|g" \
+      scripts/com.daycmd.server.plist.example \
+      > scripts/com.daycmd.server.plist
+
+  Install:
+
+    cp scripts/com.daycmd.server.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.daycmd.server.plist
+
+  The materialized `com.daycmd.server.plist` is gitignored — re-run sed
+  after a `git pull` if this template changes.
+-->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -13,7 +33,7 @@
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/isaacwright/Documents/Personal/Projects/Daycmd</string>
+    <string>__REPO_PATH__</string>
 
     <key>EnvironmentVariables</key>
     <dict>
@@ -32,10 +52,10 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/Users/isaacwright/Library/Logs/daycmd.out.log</string>
+    <string>__USER_HOME__/Library/Logs/daycmd.out.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/isaacwright/Library/Logs/daycmd.err.log</string>
+    <string>__USER_HOME__/Library/Logs/daycmd.err.log</string>
 
     <key>ThrottleInterval</key>
     <integer>10</integer>

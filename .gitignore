@@ -50,3 +50,6 @@ next-env.d.ts
 
 # Kernel browser session screenshots
 /scripts/kernel-shots/
+
+# Materialized launchd plist (template lives at scripts/com.daycmd.server.plist.example)
+/scripts/com.daycmd.server.plist
