@@ -1,5 +1,76 @@
 type GlyphProps = { s?: number; c?: string };
 
+export const DaycmdMark = ({ s = 28 }: { s?: number }) => {
+  const uid = "dm";
+  return (
+    <svg
+      width={s}
+      height={s}
+      viewBox="0 0 32 32"
+      fill="none"
+      aria-label="Daycmd"
+      role="img"
+    >
+      <defs>
+        <linearGradient id={`${uid}-arc`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="var(--c-agent)" />
+          <stop offset="55%" stopColor="var(--c-tasks)" />
+          <stop offset="100%" stopColor="var(--c-github)" />
+        </linearGradient>
+        <radialGradient id={`${uid}-core`} cx="50%" cy="40%" r="60%">
+          <stop offset="0%" stopColor="oklch(1 0 0 / 0.55)" />
+          <stop offset="100%" stopColor="oklch(1 0 0 / 0)" />
+        </radialGradient>
+      </defs>
+      {/* outer ring */}
+      <circle
+        cx="16"
+        cy="16"
+        r="14"
+        stroke="var(--fg)"
+        strokeOpacity="0.18"
+        strokeWidth="1"
+      />
+      {/* day arc — sweep from west horizon up over to east horizon */}
+      <g className="mark-spin">
+        <path
+          d="M3.6 16 A12.4 12.4 0 0 1 28.4 16"
+          stroke={`url(#${uid}-arc)`}
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          fill="none"
+        />
+        {/* sun bead riding arc */}
+        <circle cx="28.4" cy="16" r="1.9" fill="var(--c-agent)" />
+      </g>
+      {/* horizon line */}
+      <line
+        x1="6"
+        y1="16"
+        x2="26"
+        y2="16"
+        stroke="var(--fg)"
+        strokeOpacity="0.35"
+        strokeWidth="1"
+      />
+      {/* gnomon */}
+      <line
+        x1="16"
+        y1="9"
+        x2="16"
+        y2="16"
+        stroke="var(--fg)"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      {/* core glow */}
+      <circle cx="16" cy="16" r="3.6" fill={`url(#${uid}-core)`} />
+      <circle cx="16" cy="16" r="1.3" fill="var(--fg)" />
+    </svg>
+  );
+};
+
+
 export const Envelope = ({ s = 14, c = "currentColor" }: GlyphProps) => (
   <svg width={s} height={s} viewBox="0 0 16 16" fill="none" stroke={c} strokeWidth="1.4">
     <rect x="1.6" y="3.4" width="12.8" height="9.2" rx="1.6" />

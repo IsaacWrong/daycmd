@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { usePoll } from "@/lib/hooks";
 import type { GhSummary } from "@/lib/github";
 import type { CalEvent } from "@/lib/calendar";
@@ -84,6 +85,24 @@ function useCounts(): Record<SectionKey, number> {
   };
 }
 
+function TickCount({ value }: { value: number }) {
+  const [shown, setShown] = useState(value);
+  const [animKey, setAnimKey] = useState(0);
+  const prev = useRef(value);
+  useEffect(() => {
+    if (prev.current !== value) {
+      prev.current = value;
+      setShown(value);
+      setAnimKey((k) => k + 1);
+    }
+  }, [value]);
+  return (
+    <span key={animKey} className={animKey === 0 ? "" : "count-tick"}>
+      {shown}
+    </span>
+  );
+}
+
 export function DashboardNav({
   selected,
   onSelect,
@@ -138,7 +157,7 @@ export function DashboardNav({
                   opacity: count > 0 ? 1 : 0.5,
                 }}
               >
-                {count}
+                <TickCount value={count} />
               </span>
             )}
           </button>

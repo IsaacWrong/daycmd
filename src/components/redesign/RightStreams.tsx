@@ -141,7 +141,7 @@ export function CalendarSection() {
         );
       })}
       {upcoming.length === 0 && (
-        <p className="text-[12px] text-fg-soft py-1">No upcoming events.</p>
+        <p className="text-[12px] text-fg-soft py-1">Calendar clear. Time is yours.</p>
       )}
     </SectionMini>
   );
@@ -192,7 +192,7 @@ export function InboxSection() {
         </button>
       ))}
       {messages.length === 0 && (
-        <p className="text-[12px] text-fg-soft py-1">Inbox empty.</p>
+        <p className="text-[12px] text-fg-soft py-1">Inbox at zero. Rare. Enjoy it.</p>
       )}
     </SectionMini>
   );
@@ -277,7 +277,7 @@ export function GitHubSection() {
         </>
       )}
       {count === 0 && (
-        <p className="text-[12px] text-fg-soft py-1">No open PRs.</p>
+        <p className="text-[12px] text-fg-soft py-1">No PRs open. Ship something.</p>
       )}
     </SectionMini>
   );
@@ -382,7 +382,7 @@ export function KnowledgeSection() {
         />
       ))}
       {cats.length === 0 && (
-        <p className="text-[12px] text-fg-soft py-1">No categories yet.</p>
+        <p className="text-[12px] text-fg-soft py-1">No categories yet. Seed one in /knowledge.</p>
       )}
     </SectionMini>
   );
@@ -453,7 +453,7 @@ export function ErrorsSection() {
         </div>
       ))}
       {errs.length === 0 && (
-        <p className="text-[12px] text-fg-soft py-1">No open errors.</p>
+        <p className="text-[12px] text-fg-soft py-1">All quiet. Nothing on fire.</p>
       )}
     </SectionMini>
   );

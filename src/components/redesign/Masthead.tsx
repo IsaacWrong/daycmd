@@ -2,7 +2,7 @@
 
 import { format } from "date-fns";
 import type { Tod } from "./TodFrame";
-import { todEmoji, weatherEmoji } from "./Glyph";
+import { todEmoji, weatherEmoji, DaycmdMark } from "./Glyph";
 import { useClock, useWeather } from "./useWeather";
 
 function greetingFor(tod: Tod, name: string): string {
@@ -36,29 +36,21 @@ export function Masthead({
       className="dimmable flex items-center gap-[28px] px-14 pt-[28px] pb-[22px]"
       style={{ borderBottom: "1px solid var(--rule)" }}
     >
-      <div className="flex items-center gap-3.5">
-        <span
-          className="inline-flex items-center justify-center text-white font-semibold"
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            background:
-              "linear-gradient(135deg, var(--c-agent), var(--c-tasks) 80%, var(--c-github))",
-            fontSize: 14,
-            boxShadow: "inset 0 0 0 1px oklch(1 0 0 / 0.20)",
-          }}
-        >
-          ◉
-        </span>
+      <div className="flex items-center gap-4">
+        <DaycmdMark s={34} />
         <div>
           <div
-            className="text-[19px] font-medium leading-[1.15]"
-            style={{ letterSpacing: "-0.015em" }}
+            className="t-display"
+            style={{
+              fontSize: 26,
+              fontWeight: 500,
+              letterSpacing: "-0.035em",
+              lineHeight: 1,
+            }}
           >
             {greetingFor(tod, name)}.
           </div>
-          <div className="t-mono text-[11px] text-fg-soft mt-0.5">
+          <div className="t-mono text-[11px] text-fg-soft mt-1.5">
             {dateLine}
           </div>
         </div>

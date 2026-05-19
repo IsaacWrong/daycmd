@@ -157,13 +157,16 @@ export default function Home() {
             className="scroll dimmable"
             style={{
               overflowY: "auto",
+              overflowX: "hidden",
               paddingTop: 24,
               paddingRight: 8,
               flex: 1,
               minHeight: 0,
             }}
           >
-            <SectionView k={section} onJump={selectSection} />
+            <div key={section} className="section-view-enter">
+              <SectionView k={section} onJump={selectSection} />
+            </div>
           </section>
         </div>
       </div>

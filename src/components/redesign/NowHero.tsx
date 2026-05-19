@@ -239,6 +239,16 @@ function DayStripInner({ events, nowMs }: { events: CalEvent[]; nowMs: number })
   );
 }
 
+function openLabelFor(hour: number): string {
+  if (hour < 5) return "Quiet hours";
+  if (hour < 9) return "Open runway";
+  if (hour < 12) return "Deep-work block";
+  if (hour < 14) return "Midday clearing";
+  if (hour < 17) return "Afternoon stretch";
+  if (hour < 20) return "Wind-down window";
+  return "Off the clock";
+}
+
 export function NowHero() {
   const { data } = usePoll<CalResp>("/api/calendar", 60_000);
   const [, tick] = useState(0);
@@ -249,6 +259,7 @@ export function NowHero() {
 
   const events = data && "events" in data ? data.events : [];
   const now = findNow(events, Date.now());
+  const openLabel = openLabelFor(new Date().getHours());
 
   return (
     <div
@@ -267,14 +278,15 @@ export function NowHero() {
           </div>
         )}
         <h2
-          className="m-0 font-medium truncate"
+          className="m-0 t-display truncate"
           style={{
-            fontSize: 18,
-            letterSpacing: "-0.015em",
-            lineHeight: 1.2,
+            fontSize: 22,
+            fontWeight: 400,
+            letterSpacing: "-0.03em",
+            lineHeight: 1.05,
           }}
         >
-          {now ? now.summary : "Open block"}
+          {now ? now.summary : openLabel}
         </h2>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>

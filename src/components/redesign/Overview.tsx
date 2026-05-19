@@ -87,7 +87,8 @@ function Block({
             }
           : undefined
       }
-      className="dimmable"
+      data-interactive={interactive ? "true" : "false"}
+      className="dimmable block-lift"
       style={{
         display: "flex",
         flexDirection: "column",
@@ -281,65 +282,70 @@ export function Overview({
     : 0;
   const todaySpend = usage?.today.cost ?? 0;
 
-  const stats: { label: string; value: string; tone?: string }[] = [];
-  stats.push({ label: "closed", value: String(closedToday), tone: "var(--c-tasks)" });
-  stats.push({ label: "commits", value: String(commitsToday), tone: "var(--c-github)" });
+  const stats: { label: string; value: string; tone?: string; jump?: SectionKey }[] = [];
+  stats.push({ label: "closed", value: String(closedToday), tone: "var(--c-tasks)", jump: "tasks" });
+  stats.push({ label: "commits", value: String(commitsToday), tone: "var(--c-github)", jump: "github" });
   if (shipDays > 0) {
-    stats.push({ label: "d ship streak", value: String(shipDays), tone: "var(--c-good)" });
+    stats.push({ label: "d ship streak", value: String(shipDays), tone: "var(--c-good)", jump: "github" });
   }
-  stats.push({ label: "note words", value: String(noteWords), tone: "var(--c-obsidian)" });
+  stats.push({ label: "note words", value: String(noteWords), tone: "var(--c-obsidian)", jump: "note" });
   if (todaySpend > 0) {
     stats.push({ label: "spend", value: `$${todaySpend.toFixed(2)}`, tone: "var(--c-agent)" });
   }
   const visibleStats = stats.slice(0, 4);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 36 }}>
-      <Block
-        eyebrow="Up next"
-        jumpLabel="→ all tasks"
-        onJump={() => onJump("tasks")}
-      >
-        {top.length === 0 ? (
-          <p className="text-fg-soft" style={{ fontSize: 13, padding: "6px 0" }}>
-            Nothing open. Add one in Tasks.
-          </p>
-        ) : (
-          top.map((t) => (
-            <TaskRow key={t.id} t={t} today={today} onToggle={toggle} />
-          ))
-        )}
-      </Block>
-
-      {alerts.length > 0 && (
-        <Block eyebrow="Watch">
-          {alerts.map((a) => (
-            <AlertRow key={a.text} text={a.text} onClick={() => onJump(a.key)} />
-          ))}
-        </Block>
-      )}
-
-      <Block eyebrow="Today">
+    <div style={{ display: "flex", flexDirection: "column", gap: 44 }}>
+      {/* Hero "Today" stat row — full-bleed, display face */}
+      <section className="dimmable" style={{ marginTop: -4 }}>
         <div
-          className="flex items-baseline"
+          className="t-eyebrow"
+          style={{ marginBottom: 18 }}
+        >
+          Today
+        </div>
+        <div
           style={{
-            gap: 22,
-            flexWrap: "wrap",
-            padding: "4px 0",
+            display: "grid",
+            gridTemplateColumns: `repeat(${visibleStats.length}, minmax(0, 1fr))`,
+            gap: 24,
+            alignItems: "end",
           }}
         >
-          {visibleStats.map((s) => (
+          {visibleStats.map((s, i) => (
             <div
               key={s.label}
-              className="flex items-baseline"
-              style={{ gap: 6 }}
+              className="stat-rise"
+              onClick={s.jump ? () => onJump(s.jump!) : undefined}
+              role={s.jump ? "button" : undefined}
+              tabIndex={s.jump ? 0 : undefined}
+              onKeyDown={
+                s.jump
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onJump(s.jump!);
+                      }
+                    }
+                  : undefined
+              }
+              style={
+                {
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  borderLeft: "1px solid var(--rule)",
+                  paddingLeft: 16,
+                  cursor: s.jump ? "pointer" : "default",
+                  "--d": `${i * 70}ms`,
+                } as React.CSSProperties
+              }
             >
               <span
-                className="t-num"
+                className="t-display"
                 style={{
-                  fontSize: 22,
-                  fontWeight: 500,
-                  letterSpacing: "-0.015em",
+                  fontSize: 56,
+                  fontWeight: 400,
                   color: s.tone ?? "var(--fg)",
                 }}
               >
@@ -347,14 +353,53 @@ export function Overview({
               </span>
               <span
                 className="t-mono"
-                style={{ fontSize: 11, color: "var(--fg-soft)" }}
+                style={{
+                  fontSize: 10.5,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  color: "var(--fg-soft)",
+                }}
               >
                 {s.label}
               </span>
             </div>
           ))}
         </div>
-      </Block>
+      </section>
+
+      {/* Up next + Watch side-by-side */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: alerts.length > 0 ? "1.6fr 1fr" : "1fr",
+          gap: 40,
+          alignItems: "start",
+        }}
+      >
+        <Block
+          eyebrow="Up next"
+          jumpLabel="→ all tasks"
+          onJump={() => onJump("tasks")}
+        >
+          {top.length === 0 ? (
+            <p className="text-fg-soft" style={{ fontSize: 13, padding: "6px 0" }}>
+              Clean slate. Worth keeping it that way for now.
+            </p>
+          ) : (
+            top.map((t) => (
+              <TaskRow key={t.id} t={t} today={today} onToggle={toggle} />
+            ))
+          )}
+        </Block>
+
+        {alerts.length > 0 && (
+          <Block eyebrow="Watch">
+            {alerts.map((a) => (
+              <AlertRow key={a.text} text={a.text} onClick={() => onJump(a.key)} />
+            ))}
+          </Block>
+        )}
+      </div>
     </div>
   );
 }

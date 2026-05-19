@@ -39,6 +39,7 @@
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display);
 
   --color-bg-a: var(--bg-a);
   --color-bg-b: var(--bg-b);
@@ -66,6 +67,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
   color: var(--fg);
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 * { box-sizing: border-box; }
@@ -119,6 +121,13 @@ button { font-family: inherit; }
   font-feature-settings: "tnum" 1, "ss01" 1;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 1px 1px var(--glass-text-sh);
+}
+.t-display {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
 }
 
 /* ── Source dots ─────────────────────────────────────────────────── */
@@ -718,4 +727,92 @@ button { font-family: inherit; }
 }
 .cal-pill[data-active="true"] {
   background: oklch(from var(--fg) l c h / 0.08);
+}
+
+/* ── Section fingerprint ────────────────────────────────────────── */
+.section-tinted {
+  position: relative;
+  padding-left: 18px;
+  isolation: isolate;
+}
+.section-tinted::before {
+  content: "";
+  position: absolute;
+  inset: -6px -10px;
+  z-index: -1;
+  border-radius: 14px;
+  background: linear-gradient(
+    105deg,
+    oklch(from var(--c-tone) l c h / 0.045) 0%,
+    oklch(from var(--c-tone) l c h / 0) 70%
+  );
+  pointer-events: none;
+}
+.section-tinted::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(
+    180deg,
+    var(--c-tone) 0%,
+    oklch(from var(--c-tone) l c h / 0.25) 100%
+  );
+  pointer-events: none;
+}
+
+/* ── Section view crossfade ─────────────────────────────────────── */
+@keyframes section-enter {
+  from { opacity: 0; transform: translateY(8px); filter: blur(2px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+.section-view-enter {
+  animation: section-enter 360ms cubic-bezier(0.22, 0.61, 0.24, 1) both;
+}
+
+/* ── Nav badge count tick ────────────────────────────────────────── */
+@keyframes count-tick {
+  0% { transform: translateY(0); opacity: 1; }
+  35% { transform: translateY(-6px); opacity: 0; filter: blur(2px); }
+  36% { transform: translateY(6px); }
+  100% { transform: translateY(0); opacity: 1; filter: blur(0); }
+}
+.count-tick {
+  display: inline-block;
+  animation: count-tick 440ms cubic-bezier(0.22, 0.61, 0.24, 1) both;
+}
+
+/* ── Block hover lift ────────────────────────────────────────────── */
+.block-lift {
+  transition: transform 220ms cubic-bezier(0.22, 0.61, 0.24, 1),
+              background 220ms ease;
+  border-radius: 12px;
+  padding: 4px 10px;
+  margin: 0 -10px;
+}
+.block-lift[data-interactive="true"]:hover {
+  transform: translateY(-2px);
+  background: oklch(from var(--fg) l c h / 0.025);
+}
+
+/* ── Sun-mark slow rotation ──────────────────────────────────────── */
+@keyframes mark-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.mark-spin {
+  animation: mark-rotate 240s linear infinite;
+  transform-origin: center;
+}
+
+/* ── Hero stat reveal ────────────────────────────────────────────── */
+@keyframes stat-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.stat-rise {
+  animation: stat-rise 540ms cubic-bezier(0.22, 0.61, 0.24, 1) var(--d, 0ms) both;
 }

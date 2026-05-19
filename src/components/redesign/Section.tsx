@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 export type SourceAccent =
   | "gmail"
@@ -64,8 +64,12 @@ export function SectionMini({
   children?: ReactNode;
   className?: string;
 }) {
+  const tone = accent ? `var(--c-${accent})` : "var(--fg)";
   return (
-    <section className={"mb-8 " + (className ?? "")}>
+    <section
+      className={"section-tinted mb-8 " + (className ?? "")}
+      style={{ ["--c-tone" as string]: tone } as CSSProperties}
+    >
       <div className="flex items-center gap-2 mb-3">
         {accent && <span className={`src-dot src-${accent}`} style={{ width: 6, height: 6 }} />}
         <span className="t-eyebrow">{title}</span>
