@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteDraft,
   sendDraft,
   upsertDraft,
   useDraft,
 } from "@/lib/gmail-client";
+import { usePoll } from "@/lib/hooks";
+
+type Contact = { email: string; name: string | null; count: number; lastTs: number };
+type ContactsResp = { contacts: Contact[] } | { error: string };
 
 type Props = {
   draftId: string | null;
@@ -25,8 +29,156 @@ const empty: FormState = { to: "", cc: "", subject: "", body: "" };
 
 const AUTOSAVE_MS = 2000;
 
+function lastToken(value: string): { before: string; token: string } {
+  const idx = Math.max(value.lastIndexOf(","), value.lastIndexOf(";"));
+  if (idx === -1) return { before: "", token: value.trimStart() };
+  return { before: value.slice(0, idx + 1), token: value.slice(idx + 1).trimStart() };
+}
+
+function formatRecipient(c: Contact): string {
+  if (c.name) return `${c.name} <${c.email}>`;
+  return c.email;
+}
+
+function RecipientField({
+  value,
+  onChange,
+  placeholder,
+  contacts,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  contacts: Contact[];
+}) {
+  const [focused, setFocused] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  const { token } = useMemo(() => lastToken(value), [value]);
+  const trimmedToken = token.trim();
+  const suggestions = useMemo(() => {
+    if (!trimmedToken) return [] as Contact[];
+    const q = trimmedToken.toLowerCase();
+    const ranked = contacts
+      .filter((c) =>
+        c.email.toLowerCase().includes(q) ||
+        (c.name?.toLowerCase().includes(q) ?? false),
+      )
+      .slice(0, 8);
+    return ranked;
+  }, [contacts, trimmedToken]);
+
+  useEffect(() => {
+    setActiveIdx(0);
+  }, [trimmedToken]);
+
+  useEffect(() => {
+    if (!focused) return;
+    function onClick(e: MouseEvent) {
+      if (!wrapRef.current?.contains(e.target as Node)) setFocused(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [focused]);
+
+  function apply(c: Contact) {
+    const { before } = lastToken(value);
+    const prefix = before ? `${before.trim().replace(/[,;]\s*$/, "")}, ` : "";
+    onChange(`${prefix}${formatRecipient(c)}, `);
+    setFocused(false);
+  }
+
+  const showDropdown = focused && suggestions.length > 0;
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <input
+        className="cal-input"
+        value={value}
+        placeholder={placeholder}
+        onFocus={() => setFocused(true)}
+        onChange={(e) => {
+          onChange(e.target.value);
+          setFocused(true);
+        }}
+        onKeyDown={(e) => {
+          if (!showDropdown) return;
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setActiveIdx((i) => Math.min(suggestions.length - 1, i + 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setActiveIdx((i) => Math.max(0, i - 1));
+          } else if (e.key === "Enter" || e.key === "Tab") {
+            const pick = suggestions[activeIdx];
+            if (pick) {
+              e.preventDefault();
+              apply(pick);
+            }
+          } else if (e.key === "Escape") {
+            setFocused(false);
+          }
+        }}
+        style={{ width: "100%" }}
+      />
+      {showDropdown && (
+        <div
+          className="scroll"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            left: 0,
+            right: 0,
+            maxHeight: 280,
+            overflowY: "auto",
+            background: "var(--bg-b)",
+            border: "1px solid var(--rule)",
+            borderRadius: 8,
+            boxShadow: "0 10px 30px -10px rgb(0 0 0 / 0.35)",
+            zIndex: 10,
+            padding: 4,
+          }}
+        >
+          {suggestions.map((c, i) => (
+            <button
+              key={c.email}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => apply(c)}
+              onMouseEnter={() => setActiveIdx(i)}
+              data-active={i === activeIdx}
+              className="mail-label-menu-item"
+              style={{ display: "flex", alignItems: "baseline", gap: 10 }}
+            >
+              <span style={{ flex: 1, textAlign: "left", minWidth: 0 }}>
+                {c.name ? (
+                  <>
+                    <span>{c.name}</span>
+                    <span className="text-fg-soft" style={{ marginLeft: 8, fontSize: 11 }}>
+                      {c.email}
+                    </span>
+                  </>
+                ) : (
+                  <span>{c.email}</span>
+                )}
+              </span>
+              <span className="t-mono text-fg-soft" style={{ fontSize: 10 }}>
+                ×{c.count}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ComposeView({ draftId, onClose, onSent }: Props) {
   const { data, error } = useDraft(draftId);
+  const { data: contactsData } = usePoll<ContactsResp>("/api/gmail/contacts", 5 * 60_000);
+  const contacts: Contact[] =
+    contactsData && "contacts" in contactsData ? contactsData.contacts : [];
   const [form, setForm] = useState<FormState>(empty);
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(draftId);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -188,19 +340,19 @@ export function ComposeView({ draftId, onClose, onSent }: Props) {
         style={{ padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}
       >
         <Field label="To">
-          <input
-            className="cal-input"
+          <RecipientField
             value={form.to}
-            onChange={(e) => set("to", e.target.value)}
+            onChange={(v) => set("to", v)}
             placeholder="recipient@example.com"
+            contacts={contacts}
           />
         </Field>
         <Field label="Cc">
-          <input
-            className="cal-input"
+          <RecipientField
             value={form.cc}
-            onChange={(e) => set("cc", e.target.value)}
+            onChange={(v) => set("cc", v)}
             placeholder="Optional"
+            contacts={contacts}
           />
         </Field>
         <Field label="Subject">
