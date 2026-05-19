@@ -25,6 +25,11 @@ export function DailyNoteEditor({
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ghostTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ghostContextRef = useRef<string>("");
+  const [ghost, setGhost] = useState<string>("");
+  const [ghostBusy, setGhostBusy] = useState(false);
+  const [ghostEnabled, setGhostEnabled] = useState(false);
 
   useEffect(() => setMounted(true), []);
 
@@ -128,7 +133,76 @@ export function DailyNoteEditor({
     setStatus("idle");
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => void save(), SAVE_DEBOUNCE_MS);
+
+    // Ghost completion: clear stale suggestion + schedule a fresh one when idle.
+    setGhost("");
+    if (ghostTimer.current) clearTimeout(ghostTimer.current);
+    if (!ghostEnabled) return;
+    if (next.trim().length < 30) return;
+    ghostContextRef.current = next;
+    ghostTimer.current = setTimeout(() => {
+      void requestGhost();
+    }, 2200);
   }
+
+  async function requestGhost() {
+    if (ghostBusy) return;
+    const ctx = ghostContextRef.current;
+    if (!ctx || ctx.trim().length < 30) return;
+    setGhostBusy(true);
+    try {
+      const res = await fetch("/api/micro/ghost", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ context: ctx }),
+      });
+      const j = (await res.json()) as { continuation?: string; error?: string };
+      // Only apply if content hasn't drifted since request fired.
+      if (ghostContextRef.current === ctx && j.continuation) {
+        setGhost(j.continuation);
+      }
+    } catch {
+      // swallow — ghost is opportunistic
+    } finally {
+      setGhostBusy(false);
+    }
+  }
+
+  function acceptGhost() {
+    if (!ghost) return;
+    const sep =
+      content.length === 0 || /\s$/.test(content) ? "" : " ";
+    const next = `${content}${sep}${ghost}`;
+    setContent(next);
+    setGhost("");
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => void save(), SAVE_DEBOUNCE_MS);
+  }
+
+  function dismissGhost() {
+    setGhost("");
+    if (ghostTimer.current) clearTimeout(ghostTimer.current);
+  }
+
+  function toggleGhost() {
+    setGhostEnabled((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("daycmd.daily.ghost", next ? "1" : "0");
+      } catch {}
+      if (!next) {
+        setGhost("");
+        if (ghostTimer.current) clearTimeout(ghostTimer.current);
+      }
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    try {
+      setGhostEnabled(localStorage.getItem("daycmd.daily.ghost") === "1");
+    } catch {}
+  }, []);
 
   if (!open || !mounted) return null;
 
@@ -197,6 +271,26 @@ export function DailyNoteEditor({
           </span>
           <button
             type="button"
+            onClick={toggleGhost}
+            className="t-mono"
+            title={ghostEnabled ? "AI continuations on — click to disable" : "Suggest sentence continuations while typing"}
+            style={{
+              background: ghostEnabled
+                ? "oklch(from var(--c-agent) l c h / 0.14)"
+                : "transparent",
+              border: `1px solid ${ghostEnabled ? "oklch(from var(--c-agent) l c h / 0.32)" : "var(--rule)"}`,
+              borderRadius: 6,
+              padding: "2px 8px",
+              fontSize: 10,
+              color: ghostEnabled ? "var(--c-agent)" : "var(--fg-soft)",
+              cursor: "pointer",
+              letterSpacing: "0.04em",
+            }}
+          >
+            ✦ ghost
+          </button>
+          <button
+            type="button"
             onClick={onClose}
             className="t-mono hover:text-fg"
             style={{
@@ -214,6 +308,72 @@ export function DailyNoteEditor({
         </header>
         <hr className="hr-rule mb-3" />
         <ObsidianEditor value={content} onChange={onChange} autoFocus />
+        {ghostEnabled && (ghost || ghostBusy) && (
+          <div
+            style={{
+              marginTop: 8,
+              padding: "8px 12px",
+              borderRadius: 8,
+              border: "1px solid oklch(from var(--c-agent) l c h / 0.22)",
+              background: "oklch(from var(--c-agent) l c h / 0.05)",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              fontSize: 13,
+            }}
+          >
+            <span style={{ color: "var(--c-agent)", fontSize: 12 }}>✦</span>
+            <span
+              className="flex-1"
+              style={{
+                color: ghost ? "var(--fg-soft)" : "var(--fg-soft)",
+                fontStyle: ghost ? "italic" : "normal",
+                opacity: ghostBusy && !ghost ? 0.6 : 1,
+              }}
+            >
+              {ghost || "thinking…"}
+            </span>
+            {ghost && (
+              <>
+                <button
+                  type="button"
+                  onClick={acceptGhost}
+                  className="t-mono"
+                  style={{
+                    background: "transparent",
+                    border: "1px solid var(--rule)",
+                    borderRadius: 4,
+                    padding: "2px 8px",
+                    fontSize: 10,
+                    color: "var(--c-good)",
+                    cursor: "pointer",
+                    letterSpacing: "0.04em",
+                  }}
+                  title="Append to note"
+                >
+                  ✓ accept
+                </button>
+                <button
+                  type="button"
+                  onClick={dismissGhost}
+                  className="t-mono"
+                  style={{
+                    background: "transparent",
+                    border: "1px solid var(--rule)",
+                    borderRadius: 4,
+                    padding: "2px 8px",
+                    fontSize: 10,
+                    color: "var(--fg-soft)",
+                    cursor: "pointer",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  dismiss
+                </button>
+              </>
+            )}
+          </div>
+        )}
         <div
           className="t-mono mt-2 flex justify-between"
           style={{ fontSize: 10, color: "var(--fg-soft)" }}

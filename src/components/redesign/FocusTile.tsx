@@ -75,6 +75,13 @@ export function FocusTile({ defaultProject = "Daycmd" }: { defaultProject?: stri
   const [project, setProject] = useState(defaultProject);
   const [hydrated, setHydrated] = useState(false);
   const completedRef = useRef(false);
+  const [captureFor, setCaptureFor] = useState<{
+    count: number;
+    project: string;
+  } | null>(null);
+  const [captureText, setCaptureText] = useState("");
+  const [captureBusy, setCaptureBusy] = useState(false);
+  const captureInputRef = useRef<HTMLInputElement>(null);
   const { data: projectsResp } = usePoll<ProjectsResp>("/api/projects", 60_000);
   const projects = projectsResp?.projects ?? [];
   const timer = useActiveTimer();
@@ -179,14 +186,8 @@ export function FocusTile({ defaultProject = "Daycmd" }: { defaultProject?: stri
       setState(null);
       persist({ today: nextCount, day: today0, state: null });
       void timer.stop(`Pomodoro ${nextCount} · ${project}`);
-      if (nextCount > 0 && nextCount % 4 === 0) {
-        const note = `Pomodoro ${nextCount} done · ${project}`;
-        fetch("/api/obsidian/daily", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ text: note }),
-        }).catch(() => {});
-      }
+      setCaptureFor({ count: nextCount, project });
+      setCaptureText("");
     }
   }, [state, now, today, project, hydrated, timer]);
 
@@ -203,6 +204,47 @@ export function FocusTile({ defaultProject = "Daycmd" }: { defaultProject?: stri
     setState(null);
     persist({ state: null });
     timer.discard();
+  }
+
+  useEffect(() => {
+    if (captureFor) {
+      requestAnimationFrame(() => captureInputRef.current?.focus());
+    }
+  }, [captureFor]);
+
+  async function commitCapture(text: string) {
+    if (!captureFor) return;
+    if (captureBusy) return;
+    setCaptureBusy(true);
+    try {
+      const time = new Date().toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      const trimmed = text.trim();
+      const summary = trimmed
+        ? trimmed
+        : `Pomodoro ${captureFor.count} · ${captureFor.project} done`;
+      const line = trimmed
+        ? `- \`${time}\` · Pomodoro ${captureFor.count} · ${captureFor.project} — ${summary}`
+        : `- \`${time}\` · Pomodoro ${captureFor.count} · ${captureFor.project}`;
+      await fetch("/api/obsidian/daily", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: line }),
+      });
+    } catch {
+      // never block the UI on a write
+    } finally {
+      setCaptureBusy(false);
+      setCaptureFor(null);
+      setCaptureText("");
+    }
+  }
+
+  function skipCapture() {
+    setCaptureFor(null);
+    setCaptureText("");
   }
 
 
@@ -346,6 +388,98 @@ export function FocusTile({ defaultProject = "Daycmd" }: { defaultProject?: stri
           />
         ))}
       </div>
+
+      {captureFor && (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid oklch(from var(--c-tasks) l c h / 0.32)",
+            background: "oklch(from var(--c-tasks) l c h / 0.05)",
+          }}
+        >
+          <div
+            className="t-mono"
+            style={{
+              fontSize: 10,
+              color: "var(--c-tasks)",
+              letterSpacing: "0.06em",
+              marginBottom: 6,
+            }}
+          >
+            POMO {captureFor.count} DONE — WHAT MOVED?
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void commitCapture(captureText);
+            }}
+            className="flex items-center gap-2"
+          >
+            <input
+              ref={captureInputRef}
+              value={captureText}
+              onChange={(e) => setCaptureText(e.target.value)}
+              placeholder="one line, what moved"
+              disabled={captureBusy}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                background: "transparent",
+                border: 0,
+                outline: 0,
+                color: "var(--fg)",
+                fontFamily: "inherit",
+                fontSize: 13,
+                letterSpacing: "-0.005em",
+                borderBottom: "1px solid var(--rule)",
+                paddingBottom: 4,
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  skipCapture();
+                }
+              }}
+            />
+            <button
+              type="submit"
+              disabled={captureBusy}
+              className="t-mono"
+              style={{
+                background: "transparent",
+                border: "1px solid var(--rule)",
+                borderRadius: 4,
+                padding: "2px 8px",
+                fontSize: 10,
+                color: captureBusy ? "var(--fg-soft)" : "var(--c-good)",
+                cursor: captureBusy ? "wait" : "pointer",
+                letterSpacing: "0.04em",
+              }}
+            >
+              ✓ log
+            </button>
+            <button
+              type="button"
+              onClick={skipCapture}
+              className="t-mono"
+              style={{
+                background: "transparent",
+                border: "1px solid var(--rule)",
+                borderRadius: 4,
+                padding: "2px 8px",
+                fontSize: 10,
+                color: "var(--fg-soft)",
+                cursor: "pointer",
+                letterSpacing: "0.04em",
+              }}
+            >
+              skip
+            </button>
+          </form>
+        </div>
+      )}
 
       <div className="flex gap-2">
         {state ? (

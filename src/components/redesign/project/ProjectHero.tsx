@@ -4,6 +4,8 @@ import { Fragment } from "react";
 import { usePoll } from "@/lib/hooks";
 import { Sparkline } from "../Sparkline";
 
+type NarrativeResp = { narrative: string | null; cached?: boolean; error?: string };
+
 type ProjectDTO = {
   name: string;
   weeklyHours: number;
@@ -42,6 +44,10 @@ export function ProjectHero({ name }: { name: string }) {
   const analytics = usePoll<Analytics>(
     `/api/projects/${encodeURIComponent(name)}/analytics`,
     5 * 60_000,
+  ).data;
+  const narrative = usePoll<NarrativeResp>(
+    `/api/micro/project-narrative?name=${encodeURIComponent(name)}`,
+    6 * 3600_000,
   ).data;
 
   const subtitle =
@@ -191,6 +197,40 @@ export function ProjectHero({ name }: { name: string }) {
           ))}
         </div>
       </div>
+      {narrative?.narrative && (
+        <div
+          style={{
+            marginTop: 16,
+            paddingTop: 12,
+            borderTop: "1px solid var(--rule)",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+          }}
+        >
+          <span
+            style={{
+              color: "var(--c-agent)",
+              fontSize: 13,
+              lineHeight: 1.4,
+              flexShrink: 0,
+            }}
+          >
+            ✦
+          </span>
+          <p
+            className="text-fg-soft"
+            style={{
+              fontSize: 13,
+              lineHeight: 1.5,
+              letterSpacing: "-0.003em",
+              margin: 0,
+            }}
+          >
+            {narrative.narrative}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
