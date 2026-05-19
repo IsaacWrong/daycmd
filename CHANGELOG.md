@@ -7,6 +7,12 @@ contain breaking changes.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-05-19
+
+### Fixed
+
+- `scripts/com.daycmd.server.plist` baked `/Users/isaacwright/...` into `WorkingDirectory` + `StandardOut/Err` paths, leaking the maintainer's home dir. launchd does not expand `${HOME}`, so the file is now shipped as `scripts/com.daycmd.server.plist.example` w/ `__USER_HOME__` + `__REPO_PATH__` placeholders. Materialize via the `sed` snippet in the template header, then `launchctl load`. The materialized plist is gitignored.
+
 ## [0.1.0] - 2026-05-19
 
 Initial public release.
@@ -26,5 +32,6 @@ Initial public release.
 - macOS launchd plist (`scripts/com.daycmd.server.plist`) — keeps dev server up on `:3210` so 06:00 cron survives sleep.
 - Kernel browser smoke script (`scripts/kernel-smoke.mjs`).
 
-[Unreleased]: https://github.com/IsaacWrong/daycmd/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/IsaacWrong/daycmd/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/IsaacWrong/daycmd/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/IsaacWrong/daycmd/releases/tag/v0.1.0
