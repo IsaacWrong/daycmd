@@ -36,9 +36,12 @@ type GmailResp =
   | { messages: GmailMsg[]; configured: boolean; connected: boolean }
   | { error: string; configured: boolean; connected: boolean };
 type ErrorsResp = { errors: ErrorRow[] };
-type UsageResp = { today: { cost: number }; daily: { date: string; tokens: number }[] };
+type UsageResp = {
+  today: { cost: number };
+  month: { cost: number };
+  daily: { date: string; cost?: number; tokens: number }[];
+};
 type HeatResp = { days: number[] };
-type StreaksResp = { dailyNote: number; ship: number };
 type DailyResp = { exists: boolean; content: string };
 
 const PRIORITY_RANK: Record<NonNullable<ObsidianTask["priority"]>, number> = {
@@ -262,7 +265,6 @@ export function Overview({
   const errors = usePoll<ErrorsResp>("/api/errors", 60_000).data;
   const usage = usePoll<UsageResp>("/api/usage", 60_000).data;
   const heat = usePoll<HeatResp>("/api/heatmap", 90_000).data;
-  const streaks = usePoll<StreaksResp>("/api/streaks", 5 * 60_000).data;
   const daily = usePoll<DailyResp>("/api/obsidian/daily", 60_000).data;
 
   const today = new Date().toISOString().slice(0, 10);
@@ -447,22 +449,29 @@ export function Overview({
   ).length;
   const days = heat?.days ?? [];
   const commitsToday = days.length ? days[days.length - 1] : 0;
-  const shipDays = streaks?.ship ?? 0;
   const noteWords = daily?.exists
     ? daily.content.trim().split(/\s+/).filter(Boolean).length
     : 0;
   const todaySpend = usage?.today.cost ?? 0;
 
-  const stats: { label: string; value: string; tone?: string; jump?: SectionKey }[] = [];
+  const monthSpend = usage?.month?.cost ?? 0;
+
+  const stats: {
+    label: string;
+    value: string;
+    tone?: string;
+    jump?: SectionKey;
+    footnote?: string;
+  }[] = [];
   stats.push({ label: "closed", value: String(closedToday), tone: "var(--c-tasks)", jump: "tasks" });
   stats.push({ label: "commits", value: String(commitsToday), tone: "var(--c-github)", jump: "github" });
-  if (shipDays > 0) {
-    stats.push({ label: "d ship streak", value: String(shipDays), tone: "var(--c-good)", jump: "github" });
-  }
   stats.push({ label: "note words", value: String(noteWords), tone: "var(--c-obsidian)", jump: "note" });
-  if (todaySpend > 0) {
-    stats.push({ label: "spend", value: `$${todaySpend.toFixed(2)}`, tone: "var(--c-agent)" });
-  }
+  stats.push({
+    label: "ai spend",
+    value: `$${todaySpend.toFixed(2)}`,
+    tone: "var(--c-agent)",
+    footnote: `$${monthSpend.toFixed(2)} this month`,
+  });
   const visibleStats = stats.slice(0, 4);
 
   // Client-side alerts — only show when conditions trigger. No AI cost.
@@ -938,7 +947,7 @@ export function Overview({
             display: "grid",
             gridTemplateColumns: `repeat(${visibleStats.length}, minmax(0, 1fr))`,
             gap: 24,
-            alignItems: "end",
+            alignItems: "start",
           }}
         >
           {visibleStats.map((s, i) => (
@@ -991,6 +1000,20 @@ export function Overview({
               >
                 {s.label}
               </span>
+              {s.footnote && (
+                <span
+                  className="t-mono"
+                  style={{
+                    fontSize: 9.5,
+                    letterSpacing: "0.04em",
+                    color: "var(--fg-soft)",
+                    opacity: 0.7,
+                    marginTop: 1,
+                  }}
+                >
+                  {s.footnote}
+                </span>
+              )}
             </div>
           ))}
         </div>
