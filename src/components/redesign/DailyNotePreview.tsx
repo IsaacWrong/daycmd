@@ -19,11 +19,10 @@ export function DailyNotePreview() {
     <Section
       eyebrow="Notes"
       title="Daily"
+      count={words}
       accent="obsidian"
       right={
-        <span className="t-mono text-[11px] text-fg-soft">
-          {path} · {words} words
-        </span>
+        <span className="t-mono text-[11px] text-fg-soft">{path}</span>
       }
     >
       <div style={{ paddingLeft: 22, borderLeft: "2px solid var(--rule)" }}>

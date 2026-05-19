@@ -13,6 +13,8 @@ import { SectionMini } from "./Section";
 import { useCalendarOverlay } from "@/components/calendar/CalendarOverlayProvider";
 import { useMailOverlay } from "@/components/mail/MailOverlayProvider";
 import { parseEventTime } from "@/components/calendar/dates";
+import { RUN_SKILL_EVENT } from "./useAgent";
+import { SKILLS } from "@/lib/skills-defs";
 
 type CalResp =
   | { events: CalEvent[]; configured: boolean; connected: boolean }
@@ -152,8 +154,58 @@ export function InboxSection() {
   const { data } = usePoll<GmailResp>("/api/gmail", 60_000);
   const messages = data && "messages" in data ? data.messages : [];
   const unread = messages.filter((m) => m.unread).length;
+  const headerActions = (
+    <span className="flex items-center gap-1.5 ml-2">
+      <button
+        type="button"
+        onClick={() => mail.openInbox()}
+        className="t-mono"
+        title="Open inbox"
+        style={{
+          background: "transparent",
+          border: "1px solid var(--rule)",
+          borderRadius: 6,
+          padding: "2px 8px",
+          fontSize: 10,
+          color: "var(--fg-soft)",
+          cursor: "pointer",
+          letterSpacing: "0.04em",
+        }}
+      >
+        open
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          const triage = SKILLS.find((s) => s.id === "triage");
+          if (!triage) return;
+          window.dispatchEvent(
+            new CustomEvent(RUN_SKILL_EVENT, { detail: triage }),
+          );
+        }}
+        className="t-mono"
+        title="AI Triage"
+        style={{
+          background: "oklch(from var(--c-agent) l c h / 0.14)",
+          border: "1px solid oklch(from var(--c-agent) l c h / 0.32)",
+          borderRadius: 6,
+          padding: "2px 8px",
+          fontSize: 10,
+          color: "var(--c-agent)",
+          cursor: "pointer",
+          letterSpacing: "0.04em",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+        }}
+      >
+        <span style={{ fontSize: 11, lineHeight: 1, color: "var(--c-agent)" }}>✦</span>
+        triage
+      </button>
+    </span>
+  );
   return (
-    <SectionMini title="Inbox" count={unread} accent="gmail">
+    <SectionMini title="Inbox" count={unread} accent="gmail" right={headerActions}>
       {messages.slice(0, 5).map((m) => (
         <button
           key={m.id}

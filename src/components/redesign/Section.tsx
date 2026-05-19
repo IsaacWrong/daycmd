@@ -38,7 +38,9 @@ export function Section({
           </h3>
         )}
         {typeof count === "number" && (
-          <span className="t-mono t-num text-[11px] text-fg-soft">{count}</span>
+          <span className="t-mono t-num text-[11px] text-fg-soft" style={{ marginLeft: -4 }}>
+            {count}
+          </span>
         )}
         <span className="flex-1" />
         {right}
@@ -74,8 +76,9 @@ export function SectionMini({
         {accent && <span className={`src-dot src-${accent}`} style={{ width: 6, height: 6 }} />}
         <span className="t-eyebrow">{title}</span>
         {typeof count === "number" && (
-          <span className="t-mono t-num text-[10px] text-fg-soft ml-auto">{count}</span>
+          <span className="t-mono t-num text-[10px] text-fg-soft">{count}</span>
         )}
+        <span className="flex-1" />
         {right}
       </div>
       <hr className="hr-rule mb-3.5" />

@@ -358,8 +358,10 @@ export function MailOverlay({ open, onClose, initialThreadId }: Props) {
             className="cal-pill"
             data-active={triageOpen}
             title="AI Triage"
+            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
           >
-            ✨ Triage
+            <span style={{ fontSize: 13, lineHeight: 1, color: "var(--c-agent)" }}>✦</span>
+            Triage
           </button>
         </header>
 
