@@ -6,8 +6,11 @@
 
 Opens with your browser. Knows your day. Routes the work through Claude.
 
-<!-- Replace with a 30-second screen recording or hero gif. -->
-<!-- ![Daycmd — hero](docs/hero.gif) -->
+<a href="docs/hero.mp4">
+  <img src="docs/hero.gif" alt="Daycmd — 30-second tour: setup, home, agent skills" width="880">
+</a>
+
+<sub>30s · <a href="docs/hero.mp4">MP4 (1080p)</a> · regenerate with <code>npm run video:render</code></sub>
 
 </div>
 
