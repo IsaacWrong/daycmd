@@ -1,5 +1,10 @@
 import cron, { type ScheduledTask } from "node-cron";
-import { ensureDefaultKbAutomations, listAutomations, runAutomation } from "./automations";
+import {
+  ensureDefaultKbAutomations,
+  ensureMorningBriefAutomation,
+  listAutomations,
+  runAutomation,
+} from "./automations";
 
 declare global {
   var __daycmd_scheduler: {
@@ -64,6 +69,12 @@ export function startScheduler() {
     .then((res) => {
       if (res.created.length) {
         console.log(`[scheduler] seeded ${res.created.length} KB automations`);
+      }
+      try {
+        const brief = ensureMorningBriefAutomation();
+        if (brief.created) console.log(`[scheduler] seeded morning brief automation`);
+      } catch (e) {
+        console.error(`[scheduler] brief seed failed:`, (e as Error).message);
       }
       reloadScheduler();
     })

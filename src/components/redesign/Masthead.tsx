@@ -4,6 +4,9 @@ import { format } from "date-fns";
 import type { Tod } from "./TodFrame";
 import { todEmoji, weatherEmoji, DaycmdMark } from "./Glyph";
 import { useClock, useWeather } from "./useWeather";
+import { usePoll } from "@/lib/hooks";
+
+type TodayLineResp = { line: string | null; cached?: boolean; error?: string };
 
 function greetingFor(tod: Tod, name: string): string {
   const verb: Record<Tod, string> = {
@@ -30,6 +33,7 @@ export function Masthead({
   const clock = format(now, "h:mm a");
   const w = useWeather();
   const nightish = tod === "night" || tod === "deep";
+  const todayLine = usePoll<TodayLineResp>("/api/micro/today-line", 30 * 60_000).data;
 
   return (
     <div
@@ -50,8 +54,34 @@ export function Masthead({
           >
             {greetingFor(tod, name)}.
           </div>
-          <div className="t-mono text-[11px] text-fg-soft mt-1.5">
-            {dateLine}
+          <div className="t-mono text-[11px] text-fg-soft mt-1.5 flex items-center gap-2">
+            <span>{dateLine}</span>
+            {todayLine?.line && (
+              <>
+                <span
+                  className="inline-block"
+                  style={{
+                    width: 3,
+                    height: 3,
+                    borderRadius: 99,
+                    background: "var(--c-agent)",
+                    opacity: 0.7,
+                  }}
+                />
+                <span
+                  className="truncate"
+                  style={{
+                    fontFamily: "inherit",
+                    color: "var(--fg-soft)",
+                    maxWidth: 380,
+                  }}
+                  title={todayLine.line}
+                >
+                  <span style={{ color: "var(--c-agent)", marginRight: 4 }}>✦</span>
+                  {todayLine.line}
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>

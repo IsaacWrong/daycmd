@@ -440,10 +440,43 @@ export function KnowledgeSection() {
   );
 }
 
+type ErrorCluster = {
+  title: string;
+  ids: string[];
+  rootCauseGuess: string;
+  suggestedFix: string;
+};
+
+type ClustersResp = { clusters: ErrorCluster[]; error?: string };
+
 export function ErrorsSection() {
   const { data, refresh } = usePoll<{ errors: ErrorRow[] }>("/api/errors", 60_000);
+  const errs = data?.errors ?? [];
+  const allCount = errs.length;
   const [busy, setBusy] = useState<string | null>(null);
-  const errs = (data?.errors ?? []).slice(0, 4);
+  const [clusterMode, setClusterMode] = useState(false);
+  const [clusters, setClusters] = useState<ErrorCluster[]>([]);
+  const [clusterBusy, setClusterBusy] = useState(false);
+  const [openClusters, setOpenClusters] = useState<Set<string>>(new Set());
+
+  async function loadClusters() {
+    setClusterBusy(true);
+    try {
+      const res = await fetch("/api/micro/error-clusters", { cache: "no-store" });
+      const json = (await res.json()) as ClustersResp;
+      setClusters(json.clusters ?? []);
+    } catch {
+      setClusters([]);
+    } finally {
+      setClusterBusy(false);
+    }
+  }
+
+  async function toggleCluster() {
+    const next = !clusterMode;
+    setClusterMode(next);
+    if (next && clusters.length === 0) void loadClusters();
+  }
 
   async function resolve(id: string) {
     setBusy(id);
@@ -459,9 +492,168 @@ export function ErrorsSection() {
     }
   }
 
+  async function resolveMany(ids: string[]) {
+    setBusy(`cluster:${ids[0]}`);
+    try {
+      await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/errors/${encodeURIComponent(id)}`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ resolved: true }),
+          }),
+        ),
+      );
+      setClusters((prev) => prev.filter((c) => !c.ids.every((id) => ids.includes(id))));
+      refresh();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const headerActions =
+    allCount >= 3 ? (
+      <button
+        type="button"
+        onClick={toggleCluster}
+        title={clusterMode ? "Show flat list" : "AI cluster by root cause"}
+        className="t-mono ml-2"
+        style={{
+          background: clusterMode
+            ? "oklch(from var(--c-agent) l c h / 0.14)"
+            : "transparent",
+          border: `1px solid ${clusterMode ? "oklch(from var(--c-agent) l c h / 0.32)" : "var(--rule)"}`,
+          borderRadius: 6,
+          padding: "2px 8px",
+          fontSize: 10,
+          color: clusterMode ? "var(--c-agent)" : "var(--fg-soft)",
+          cursor: "pointer",
+          letterSpacing: "0.04em",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+        }}
+      >
+        <span style={{ fontSize: 11, lineHeight: 1 }}>✦</span>
+        {clusterBusy ? "clustering…" : "cluster"}
+      </button>
+    ) : null;
+
+  if (clusterMode) {
+    return (
+      <SectionMini title="Errors" count={allCount} accent="error" right={headerActions}>
+        {clusterBusy && clusters.length === 0 && (
+          <p className="text-[12px] text-fg-soft py-1">Clustering errors…</p>
+        )}
+        {!clusterBusy && clusters.length === 0 && (
+          <p className="text-[12px] text-fg-soft py-1">
+            No clusters found. Errors appear unrelated.
+          </p>
+        )}
+        {clusters.map((c) => {
+          const key = c.ids.join(",");
+          const open = openClusters.has(key);
+          return (
+            <div
+              key={key}
+              style={{
+                padding: "8px 0",
+                borderBottom: "1px solid var(--rule)",
+                fontSize: 12,
+                lineHeight: 1.45,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() =>
+                  setOpenClusters((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(key)) next.delete(key);
+                    else next.add(key);
+                    return next;
+                  })
+                }
+                className="w-full text-left flex items-start gap-2"
+                style={{
+                  background: "transparent",
+                  border: 0,
+                  padding: 0,
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  className="t-mono"
+                  style={{
+                    fontSize: 10,
+                    color: "var(--c-error)",
+                    background: "oklch(from var(--c-error) l c h / 0.14)",
+                    borderRadius: 4,
+                    padding: "1px 6px",
+                    flexShrink: 0,
+                  }}
+                >
+                  ×{c.ids.length}
+                </span>
+                <span className="flex-1" style={{ color: "var(--fg)" }}>
+                  {c.title}
+                </span>
+                <span className="t-mono text-fg-soft" style={{ fontSize: 10 }}>
+                  {open ? "−" : "+"}
+                </span>
+              </button>
+              {open && (
+                <div style={{ marginTop: 6, paddingLeft: 4 }}>
+                  <div
+                    style={{
+                      fontSize: 11.5,
+                      color: "var(--fg-soft)",
+                      marginBottom: 4,
+                    }}
+                  >
+                    <span style={{ color: "var(--c-agent)" }}>✦ Cause:</span>{" "}
+                    {c.rootCauseGuess}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 11.5,
+                      color: "var(--fg-soft)",
+                      marginBottom: 6,
+                    }}
+                  >
+                    <span style={{ color: "var(--c-good)" }}>→ Fix:</span>{" "}
+                    {c.suggestedFix}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => resolveMany(c.ids)}
+                    disabled={busy === `cluster:${c.ids[0]}`}
+                    className="t-mono"
+                    style={{
+                      background: "transparent",
+                      border: "1px solid var(--rule)",
+                      borderRadius: 4,
+                      padding: "2px 8px",
+                      fontSize: 10,
+                      color: "var(--c-good)",
+                      cursor: busy === `cluster:${c.ids[0]}` ? "wait" : "pointer",
+                      letterSpacing: "0.04em",
+                    }}
+                  >
+                    ✓ resolve all ({c.ids.length})
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </SectionMini>
+    );
+  }
+
+  const visible = errs.slice(0, 4);
   return (
-    <SectionMini title="Errors" count={errs.length} accent="error">
-      {errs.map((e) => (
+    <SectionMini title="Errors" count={allCount} accent="error" right={headerActions}>
+      {visible.map((e) => (
         <div
           key={e.id}
           className="group py-1 flex items-start gap-2"
@@ -504,7 +696,7 @@ export function ErrorsSection() {
           </button>
         </div>
       ))}
-      {errs.length === 0 && (
+      {allCount === 0 && (
         <p className="text-[12px] text-fg-soft py-1">All quiet. Nothing on fire.</p>
       )}
     </SectionMini>

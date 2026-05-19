@@ -1,11 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { mutate, usePoll } from "@/lib/hooks";
 import type { ObsidianTask } from "@/lib/tasks-parser";
 import type { GhSummary } from "@/lib/github";
 import type { GmailMsg } from "@/lib/gmail";
 import type { ErrorRow } from "@/lib/errors";
 import type { SectionKey } from "./DashboardNav";
+import { Markdown } from "@/components/Markdown";
+
+type RankResp = { ranked: Array<{ id: string; reason: string }>; error?: string };
+type BriefResp = { brief: { ts: number; output: string } | null };
+const SMART_RANK_KEY = "daycmd.upnext.smart";
+const BRIEF_COLLAPSED_KEY = "daycmd.brief.collapsed";
 
 type TasksResp = { tasks: ObsidianTask[] };
 type GhResp = GhSummary | { error: string };
@@ -64,11 +71,13 @@ function Block({
   eyebrow,
   jumpLabel,
   onJump,
+  headerExtra,
   children,
 }: {
   eyebrow: string;
   jumpLabel?: string;
   onJump?: () => void;
+  headerExtra?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const interactive = !!onJump;
@@ -98,6 +107,7 @@ function Block({
     >
       <div className="flex items-center gap-2">
         <span className="t-eyebrow">{eyebrow}</span>
+        {headerExtra}
         {jumpLabel && (
           <span
             className="t-mono ml-auto text-fg-soft"
@@ -116,55 +126,74 @@ function TaskRow({
   t,
   today,
   onToggle,
+  reason,
 }: {
   t: ObsidianTask;
   today: string;
   onToggle: (t: ObsidianTask) => void;
+  reason?: string;
 }) {
   const overdue = t.due && t.due < today;
   return (
     <div
-      className="flex items-center gap-3"
       style={{
         padding: "10px 0",
         borderBottom: "1px solid var(--rule)",
       }}
     >
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggle(t);
-        }}
-        aria-label="Mark done"
-        style={{
-          width: 14,
-          height: 14,
-          borderRadius: 4,
-          border: "1.5px solid var(--rule)",
-          background: "transparent",
-          cursor: "pointer",
-          flexShrink: 0,
-        }}
-      />
-      <span
-        className="flex-1 truncate"
-        style={{
-          fontSize: 14,
-          letterSpacing: "-0.005em",
-        }}
-      >
-        {t.text}
-      </span>
-      <span
-        className="t-mono"
-        style={{
-          fontSize: 11,
-          color: overdue ? "var(--c-error)" : "var(--fg-soft)",
-        }}
-      >
-        {dueLabel(t, today)}
-      </span>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle(t);
+          }}
+          aria-label="Mark done"
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: 4,
+            border: "1.5px solid var(--rule)",
+            background: "transparent",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        />
+        <span
+          className="flex-1 truncate"
+          style={{
+            fontSize: 14,
+            letterSpacing: "-0.005em",
+          }}
+        >
+          {t.text}
+        </span>
+        <span
+          className="t-mono"
+          style={{
+            fontSize: 11,
+            color: overdue ? "var(--c-error)" : "var(--fg-soft)",
+          }}
+        >
+          {dueLabel(t, today)}
+        </span>
+      </div>
+      {reason && (
+        <div
+          className="t-mono"
+          style={{
+            fontSize: 10.5,
+            color: "var(--c-agent)",
+            paddingLeft: 26,
+            marginTop: 4,
+            letterSpacing: "0.01em",
+            opacity: 0.85,
+          }}
+        >
+          <span style={{ marginRight: 4 }}>✦</span>
+          {reason}
+        </div>
+      )}
     </div>
   );
 }
@@ -222,7 +251,98 @@ export function Overview({
 
   const today = new Date().toISOString().slice(0, 10);
   const allTasks = tasks?.tasks ?? [];
-  const top = pickTopTasks(allTasks, today);
+
+  const brief = usePoll<BriefResp>("/api/micro/morning-brief", 10 * 60_000).data;
+  const [briefBusy, setBriefBusy] = useState(false);
+  const [briefCollapsed, setBriefCollapsed] = useState(false);
+  useEffect(() => {
+    try {
+      setBriefCollapsed(localStorage.getItem(BRIEF_COLLAPSED_KEY) === "1");
+    } catch {}
+  }, []);
+  function toggleBriefCollapsed() {
+    setBriefCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(BRIEF_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  }
+  async function runBrief() {
+    setBriefBusy(true);
+    try {
+      await fetch("/api/micro/morning-brief", { method: "POST" });
+      mutate("/api/micro/morning-brief");
+    } finally {
+      setBriefBusy(false);
+    }
+  }
+
+  const briefIsToday =
+    brief?.brief &&
+    new Date(brief.brief.ts).toISOString().slice(0, 10) === today;
+
+  const [smart, setSmart] = useState(false);
+  useEffect(() => {
+    try {
+      setSmart(localStorage.getItem(SMART_RANK_KEY) === "1");
+    } catch {}
+  }, []);
+  function toggleSmart() {
+    setSmart((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SMART_RANK_KEY, next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  }
+
+  const [rank, setRank] = useState<RankResp | null>(null);
+  const [rankBusy, setRankBusy] = useState(false);
+  useEffect(() => {
+    if (!smart) {
+      setRank(null);
+      return;
+    }
+    let cancelled = false;
+    async function load() {
+      setRankBusy(true);
+      try {
+        const res = await fetch("/api/micro/rank-tasks", { cache: "no-store" });
+        const json = (await res.json()) as RankResp;
+        if (!cancelled) setRank(json);
+      } catch {
+        if (!cancelled) setRank({ ranked: [], error: "load failed" });
+      } finally {
+        if (!cancelled) setRankBusy(false);
+      }
+    }
+    void load();
+    const id = setInterval(() => void load(), 15 * 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [smart]);
+
+  const heuristicTop = pickTopTasks(allTasks, today);
+  let displayTop: Array<{ task: ObsidianTask; reason?: string }> = heuristicTop.map((t) => ({
+    task: t,
+  }));
+  if (smart && rank?.ranked?.length) {
+    const byId = new Map(allTasks.map((t) => [t.id, t]));
+    const ranked = rank.ranked
+      .map((r) => {
+        const task = byId.get(r.id);
+        return task && !task.done && !task.cancelled
+          ? { task, reason: r.reason }
+          : null;
+      })
+      .filter((x): x is { task: ObsidianTask; reason: string } => x !== null);
+    if (ranked.length) displayTop = ranked;
+  }
 
   async function toggle(t: ObsidianTask) {
     if (t.done) return;
@@ -296,6 +416,101 @@ export function Overview({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 44 }}>
+      {/* Morning brief AI intel card */}
+      <section
+        className="dimmable"
+        style={{
+          marginTop: -4,
+          border: "1px solid oklch(from var(--c-agent) l c h / 0.24)",
+          borderRadius: 10,
+          padding: "14px 18px",
+          background: "oklch(from var(--c-agent) l c h / 0.04)",
+        }}
+      >
+        <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
+          <span
+            className="t-eyebrow"
+            style={{ color: "var(--c-agent)", letterSpacing: "0.08em" }}
+          >
+            ✦ Morning Brief
+          </span>
+          {brief?.brief && (
+            <span
+              className="t-mono text-fg-soft"
+              style={{ fontSize: 10 }}
+              title={new Date(brief.brief.ts).toLocaleString()}
+            >
+              {briefIsToday
+                ? new Date(brief.brief.ts).toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })
+                : new Date(brief.brief.ts).toLocaleDateString()}
+            </span>
+          )}
+          <span className="ml-auto flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={runBrief}
+              disabled={briefBusy}
+              title="Run brief now"
+              className="t-mono"
+              style={{
+                background: "transparent",
+                border: "1px solid var(--rule)",
+                borderRadius: 6,
+                padding: "2px 8px",
+                fontSize: 10,
+                color: briefBusy ? "var(--fg-soft)" : "var(--c-agent)",
+                cursor: briefBusy ? "wait" : "pointer",
+                letterSpacing: "0.04em",
+              }}
+            >
+              {briefBusy ? "running…" : brief?.brief ? "refresh" : "run"}
+            </button>
+            {brief?.brief && (
+              <button
+                type="button"
+                onClick={toggleBriefCollapsed}
+                title={briefCollapsed ? "Expand" : "Collapse"}
+                className="t-mono"
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--rule)",
+                  borderRadius: 6,
+                  padding: "2px 8px",
+                  fontSize: 10,
+                  color: "var(--fg-soft)",
+                  cursor: "pointer",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                {briefCollapsed ? "+" : "−"}
+              </button>
+            )}
+          </span>
+        </div>
+        {!brief?.brief && (
+          <p className="text-fg-soft" style={{ fontSize: 12 }}>
+            No brief yet today. Runs daily at 8am — hit run to generate now.
+          </p>
+        )}
+        {brief?.brief && !briefIsToday && !briefCollapsed && (
+          <p
+            className="t-mono text-fg-soft"
+            style={{ fontSize: 10.5, marginBottom: 8 }}
+          >
+            Stale — last run{" "}
+            {new Date(brief.brief.ts).toLocaleDateString()}. Refresh for today.
+          </p>
+        )}
+        {brief?.brief && !briefCollapsed && (
+          <div style={{ fontSize: 13 }}>
+            <Markdown>{brief.brief.output}</Markdown>
+          </div>
+        )}
+      </section>
+
       {/* Hero "Today" stat row — full-bleed, display face */}
       <section className="dimmable" style={{ marginTop: -4 }}>
         <div
@@ -380,14 +595,49 @@ export function Overview({
           eyebrow="Up next"
           jumpLabel="→ all tasks"
           onJump={() => onJump("tasks")}
+          headerExtra={
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleSmart();
+              }}
+              title={smart ? "Smart rank on — click to disable" : "Smart rank: agent picks based on calendar gaps + priority"}
+              className="t-mono"
+              style={{
+                background: smart
+                  ? "oklch(from var(--c-agent) l c h / 0.14)"
+                  : "transparent",
+                border: `1px solid ${smart ? "oklch(from var(--c-agent) l c h / 0.32)" : "var(--rule)"}`,
+                borderRadius: 6,
+                padding: "2px 8px",
+                fontSize: 10,
+                color: smart ? "var(--c-agent)" : "var(--fg-soft)",
+                cursor: "pointer",
+                letterSpacing: "0.04em",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <span style={{ fontSize: 11, lineHeight: 1 }}>✦</span>
+              {smart ? (rankBusy ? "ranking…" : "smart") : "smart"}
+            </button>
+          }
         >
-          {top.length === 0 ? (
+          {displayTop.length === 0 ? (
             <p className="text-fg-soft" style={{ fontSize: 13, padding: "6px 0" }}>
               Clean slate. Worth keeping it that way for now.
             </p>
           ) : (
-            top.map((t) => (
-              <TaskRow key={t.id} t={t} today={today} onToggle={toggle} />
+            displayTop.map(({ task, reason }) => (
+              <TaskRow
+                key={task.id}
+                t={task}
+                today={today}
+                onToggle={toggle}
+                reason={reason}
+              />
             ))
           )}
         </Block>

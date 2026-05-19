@@ -14,6 +14,7 @@ import {
   getDeviceId,
 } from "./vault-state";
 import { env } from "./config";
+import { SKILLS } from "./skills-defs";
 
 export type AutomationKind = "agent" | "compile" | "lint";
 
@@ -334,6 +335,14 @@ export async function runAutomation(id: number): Promise<AutomationRun> {
     finalRecord.cache_read_tokens = result.usage.cache_read_tokens;
     finalRecord.cache_write_tokens = result.usage.cache_write_tokens;
     setLastRunAt(id, endedAt);
+    if (result.ok && a.name === DASHBOARD_BRIEF_NAME) {
+      try {
+        writeStateSync("dashboard/morning-brief", {
+          ts: endedAt,
+          output: result.output,
+        });
+      } catch {}
+    }
   } catch (e) {
     finalRecord.ended_at = Date.now();
     finalRecord.ok = 0;
@@ -345,12 +354,29 @@ export async function runAutomation(id: number): Promise<AutomationRun> {
   return { ...finalRecord, id: `${getDeviceId()}:${startedAt}` };
 }
 
-// 6am daily compile, 6:30am daily lint.
+// 6am daily compile, 6:30am daily lint, 8am morning brief.
 const DEFAULT_COMPILE_CRON = "0 6 * * *";
 const DEFAULT_LINT_CRON = "30 6 * * *";
+const DEFAULT_BRIEF_CRON = "0 8 * * *";
+
+export const DASHBOARD_BRIEF_NAME = "Daily Morning Brief";
 
 function automationExists(name: string): boolean {
   return loadAll().some((a) => a.name === name);
+}
+
+export function ensureMorningBriefAutomation(): { created: boolean } {
+  if (automationExists(DASHBOARD_BRIEF_NAME)) return { created: false };
+  const brief = SKILLS.find((s) => s.id === "brief");
+  if (!brief) return { created: false };
+  createAutomation({
+    name: DASHBOARD_BRIEF_NAME,
+    cron: DEFAULT_BRIEF_CRON,
+    kind: "agent",
+    prompt: brief.prompt,
+    enabled: true,
+  });
+  return { created: true };
 }
 
 /**
