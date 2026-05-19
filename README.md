@@ -167,9 +167,10 @@ Pre-1.0. Issues and PRs welcome — keep them small and focused. See [`CONTRIBUT
 
 Daycmd is MIT-licensed and built in spare hours. If it's earned a spot in your new-tab page, you can help keep it that way:
 
-- [GitHub Sponsors](https://github.com/sponsors/IsaacWrong) — recurring, GitHub takes no cut.
 - [Buy Me a Coffee](https://www.buymeacoffee.com/isaacwrong) — one-time tip.
 - Star the repo, file a thoughtful issue, or send a small focused PR — equally appreciated and arguably more useful.
+
+GitHub Sponsors is coming once enrollment clears.
 
 ## License
 
