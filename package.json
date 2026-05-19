@@ -14,6 +14,7 @@
     "lint": "eslint .",
     "video:studio": "remotion studio remotion/index.ts",
     "video:render": "remotion render hero docs/hero.mp4 --codec h264 --crf 22",
+    "video:shots": "node scripts/capture-tutorial-shots.mjs",
     "video:tutorials": "bash scripts/render-tutorials.sh"
   },
   "dependencies": {

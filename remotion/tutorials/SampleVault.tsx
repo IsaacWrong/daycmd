@@ -1,194 +1,100 @@
-import { useCurrentFrame } from "remotion";
-import { BrowserFrame } from "../components/BrowserFrame";
-import { Glass } from "../components/Glass";
-import { Eyebrow } from "../components/Eyebrow";
-import { ACCENTS, FONT_DISPLAY, FONT_MONO, FONT_SANS, TOD } from "../palette";
-import { Caret, StatusPill, TutorialFrame } from "./Common";
+import { TOD, ACCENTS, FONT_MONO } from "../palette";
+import { Callout, HighlightBox, Shot, ShotFrame, TerminalStrip } from "./ShotFrame";
+
+const SHOT_W = 820;
+const SHOT_LEFT = 1600 - SHOT_W - 60;
+const SHOT_TOP = 180;
+const S = SHOT_W / 1568;
+// Vault path row at raw y=300, x=440, w=750
+const vaultRect = {
+  x: SHOT_LEFT + 440 * S,
+  y: SHOT_TOP + 290 * S,
+  w: 760 * S,
+  h: 60 * S,
+};
+// "vault" pill at x=85, y=200, w=70, h=32
+const vaultPillRect = {
+  x: SHOT_LEFT + 80 * S,
+  y: SHOT_TOP + 195 * S,
+  w: 85 * S,
+  h: 38 * S,
+};
 
 export const SampleVaultTutorial: React.FC = () => {
-  const f = useCurrentFrame();
   const palette = TOD.morning;
 
-  const sampleShownFrom = 30;
-  const swapFrom = 130;
-  const fullPath = "/Users/you/Vaults/main";
-  const typed = Math.max(0, Math.min(fullPath.length, Math.floor((f - swapFrom) * 0.9)));
-  const restartFrom = 200;
-  const realShownFrom = 240;
-
   return (
-    <TutorialFrame
-      palette={palette}
+    <ShotFrame
+      tod="morning"
       eyebrow="Tutorial · 10s · vault"
-      title="try the sample, then point at yours."
+      title="sample first, then your vault"
       footer={
         <span>
-          The agent edits files. Test on{" "}
-          <span style={{ fontFamily: FONT_MONO }}>examples/sample-vault</span>{" "}
-          before you swap in your real notes.
+          The agent edits files in <span style={{ fontFamily: FONT_MONO }}>VAULT_PATH</span>.
+          Test on <span style={{ fontFamily: FONT_MONO }}>examples/sample-vault</span> before
+          pointing at real notes.
         </span>
       }
     >
       <div
         style={{
-          width: 1280,
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 22,
+          position: "absolute",
+          left: 60,
+          top: 200,
+          width: 620,
         }}
       >
-        <Glass
+        <TerminalStrip
           palette={palette}
-          style={{
-            padding: "22px 26px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-          }}
-        >
-          <Eyebrow palette={palette}>~/daycmd/.env.local</Eyebrow>
-          <div
-            style={{
-              background: "oklch(0.13 0.02 260 / 0.92)",
-              borderRadius: 10,
-              padding: "16px 18px",
-              fontFamily: FONT_MONO,
-              fontSize: 15,
-              lineHeight: 1.65,
-              color: "oklch(0.94 0.01 260)",
-              minHeight: 110,
-            }}
-          >
-            <div>
-              <span style={{ color: "oklch(0.70 0.13 150)" }}>VAULT_PATH</span>
-              <span style={{ color: "oklch(0.70 0.01 260)" }}>=</span>
-              {f < swapFrom ? (
-                <span style={{ color: "oklch(0.85 0.10 60)" }}>
-                  "$PWD/examples/sample-vault"
-                </span>
-              ) : (
-                <span style={{ color: "oklch(0.85 0.10 60)" }}>
-                  "{fullPath.slice(0, typed)}"
-                  {typed < fullPath.length ? (
-                    <Caret palette={palette} />
-                  ) : null}
-                </span>
-              )}
-            </div>
-            <div>
-              <span style={{ color: "oklch(0.70 0.13 150)" }}>
-                ANTHROPIC_API_KEY
-              </span>
-              <span style={{ color: "oklch(0.70 0.01 260)" }}>=</span>
-              <span style={{ color: "oklch(0.85 0.10 60)" }}>"sk-ant-•••"</span>
-            </div>
-            {f >= restartFrom ? (
-              <div style={{ marginTop: 14 }}>
-                <span style={{ color: "oklch(0.70 0.13 150)" }}>$ </span>
-                <span>npm run dev</span>
-              </div>
-            ) : null}
-            {f >= restartFrom + 16 ? (
-              <div style={{ color: "oklch(0.70 0.01 260)", marginTop: 4 }}>
-                ▲ Next.js 16.2.6 · ready on http://localhost:3000
-              </div>
-            ) : null}
-          </div>
-          <div
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              flexWrap: "wrap",
-            }}
-          >
-            {f < swapFrom ? (
-              <StatusPill palette={palette} tone="muted">
-                using sample vault
-              </StatusPill>
-            ) : f < realShownFrom ? (
-              <StatusPill palette={palette} tone="warn">
-                vault changed · restart dev
-              </StatusPill>
-            ) : (
-              <StatusPill palette={palette} tone="good">
-                ✓ your vault · 1,247 notes
-              </StatusPill>
-            )}
-          </div>
-        </Glass>
-
-        <BrowserFrame
-          palette={palette}
-          url="localhost:3000"
-          style={{ height: 380 }}
-        >
-          <div style={{ padding: "20px 24px" }}>
-            <Eyebrow palette={palette}>Tasks · Today</Eyebrow>
-            <div
-              style={{
-                marginTop: 10,
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-              }}
-            >
-              {(f < realShownFrom
-                ? f < sampleShownFrom
-                  ? []
-                  : SAMPLE_TASKS
-                : YOUR_TASKS
-              ).map((t, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    fontSize: 13,
-                    color: palette.fg,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: 4,
-                      border: `1.5px solid ${palette.fgSoft}`,
-                    }}
-                  />
-                  <span>{t}</span>
-                </div>
-              ))}
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: palette.fgSoft,
-                marginTop: 14,
-                fontFamily: FONT_MONO,
-              }}
-            >
-              {f < realShownFrom
-                ? "vault · examples/sample-vault · 24 notes"
-                : "vault · ~/Vaults/main · 1,247 notes"}
-            </div>
-          </div>
-        </BrowserFrame>
+          lines={[
+            { kind: "prompt", text: 'echo VAULT_PATH=examples/sample-vault > .env.local', at: 20, dur: 36 },
+            { kind: "prompt", text: "npm run dev", at: 60, dur: 12 },
+            { kind: "out", text: "▲ ready · localhost:3000", at: 82 },
+            { kind: "prompt", text: 'vim .env.local  # swap to your vault', at: 150, dur: 28 },
+            { kind: "prompt", text: "# restart dev to apply", at: 220, dur: 22 },
+          ]}
+        />
       </div>
-    </TutorialFrame>
+
+      <div
+        style={{
+          position: "absolute",
+          left: SHOT_LEFT,
+          top: SHOT_TOP,
+          width: SHOT_W,
+        }}
+      >
+        <Shot src="keys-blank.png" width={SHOT_W} fadeOut={[140, 165]} />
+        <div style={{ position: "absolute", left: 0, top: 0 }}>
+          <Shot src="keys-vault.png" width={SHOT_W} fadeIn={[140, 165]} />
+        </div>
+      </div>
+
+      <HighlightBox
+        palette={palette}
+        rect={vaultRect}
+        fadeIn={[40, 70]}
+        fadeOut={[260, 280]}
+        accent={ACCENTS.tasks}
+      />
+
+      <HighlightBox
+        palette={palette}
+        rect={vaultPillRect}
+        fadeIn={[180, 210]}
+        fadeOut={[270, 290]}
+        accent={ACCENTS.good}
+      />
+
+      <Callout
+        palette={palette}
+        rect={{ x: SHOT_LEFT + SHOT_W * 0.55, y: SHOT_TOP + 320 * S }}
+        text="Vault path resolves at server boot. Or just edit via /settings once the wizard runs."
+        fadeIn={[200, 230]}
+        width={280}
+        accent={ACCENTS.good}
+        arrow="up"
+      />
+    </ShotFrame>
   );
 };
-
-const SAMPLE_TASKS = [
-  "(sample) read the README",
-  "(sample) try the focus tile",
-  "(sample) write your first daily note",
-];
-
-const YOUR_TASKS = [
-  "ship hero video to README",
-  "review #214 KB compile bug",
-  "draft sponsor section",
-  "archive Q1 receipts",
-];
