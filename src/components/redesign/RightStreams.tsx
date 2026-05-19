@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { format, formatDistanceToNowStrict, isToday, isTomorrow } from "date-fns";
 import { usePoll } from "@/lib/hooks";
 import type { CalEvent } from "@/lib/calendar";
@@ -50,33 +50,199 @@ const BUCKET_LABEL: Record<Bucket, string> = {
   later: "Later",
 };
 
+type EventBrief = {
+  bullets: string[];
+  wikiHits: Array<{ category: string; path: string }>;
+  priorMentions: Array<{ date: string; line: string }>;
+  reason?: string;
+  error?: string;
+};
+
 function CalendarRow({ e }: { e: CalEvent }) {
   const overlay = useCalendarOverlay();
   const start = new Date(e.start);
   const time = e.allDay
     ? "all day"
     : start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+  const [expanded, setExpanded] = useState(false);
+  const [brief, setBrief] = useState<EventBrief | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function loadBrief() {
+    if (busy || brief) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/micro/event-brief", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          eventId: e.id,
+          summary: e.summary,
+          description: e.description,
+          start: e.start,
+          location: e.location,
+        }),
+      });
+      const json = (await res.json()) as EventBrief;
+      setBrief(json);
+    } catch (err) {
+      setBrief({
+        bullets: [],
+        wikiHits: [],
+        priorMentions: [],
+        error: (err as Error).message,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toggleBrief(ev: React.MouseEvent) {
+    ev.stopPropagation();
+    const next = !expanded;
+    setExpanded(next);
+    if (next && !brief) void loadBrief();
+  }
+
+  const hasContext =
+    brief &&
+    (brief.bullets.length > 0 ||
+      brief.wikiHits.length > 0 ||
+      brief.priorMentions.length > 0);
+
   return (
-    <button
-      key={`${e.calendar}-${e.id}`}
-      onClick={() => overlay.openEvent(e)}
-      className="flex items-center gap-2.5 py-1 text-[13px] hover:opacity-80 w-full text-left"
-      style={{ background: "transparent", border: "none", padding: "6px 0", cursor: "pointer" }}
-    >
-      <span
-        className="t-mono text-[11px] text-fg-soft"
-        style={{ width: 52 }}
-      >
-        {time}
-      </span>
-      <span
-        className="src-dot src-calendar"
-        style={{ width: 6, height: 6, background: e.calendarColor || undefined }}
-      />
-      <span className="flex-1 truncate" style={{ letterSpacing: "-0.005em" }}>
-        {e.summary}
-      </span>
-    </button>
+    <div key={`${e.calendar}-${e.id}`} style={{ padding: "2px 0" }}>
+      <div className="flex items-center gap-2.5" style={{ padding: "4px 0" }}>
+        <button
+          onClick={() => overlay.openEvent(e)}
+          className="flex-1 flex items-center gap-2.5 text-[13px] hover:opacity-80 text-left"
+          style={{
+            background: "transparent",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+          }}
+        >
+          <span
+            className="t-mono text-[11px] text-fg-soft"
+            style={{ width: 52 }}
+          >
+            {time}
+          </span>
+          <span
+            className="src-dot src-calendar"
+            style={{ width: 6, height: 6, background: e.calendarColor || undefined }}
+          />
+          <span className="flex-1 truncate" style={{ letterSpacing: "-0.005em" }}>
+            {e.summary}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={toggleBrief}
+          title={expanded ? "Hide prep" : "AI prep"}
+          className="t-mono"
+          style={{
+            background: expanded
+              ? "oklch(from var(--c-agent) l c h / 0.14)"
+              : "transparent",
+            border: 0,
+            padding: "1px 5px",
+            fontSize: 10,
+            color: busy
+              ? "var(--fg-soft)"
+              : expanded
+                ? "var(--c-agent)"
+                : "var(--fg-soft)",
+            cursor: busy ? "wait" : "pointer",
+            borderRadius: 4,
+            lineHeight: 1,
+          }}
+        >
+          ✦
+        </button>
+      </div>
+      {expanded && (
+        <div
+          style={{
+            padding: "6px 10px 8px 60px",
+            borderLeft: "1px solid oklch(from var(--c-agent) l c h / 0.18)",
+            marginLeft: 24,
+            fontSize: 11.5,
+            lineHeight: 1.55,
+          }}
+        >
+          {busy && !brief && <span className="text-fg-soft">Loading prep…</span>}
+          {brief && !hasContext && (
+            <span className="text-fg-soft">
+              {brief.reason ?? brief.error ?? "No prior context for this event."}
+            </span>
+          )}
+          {brief && hasContext && (
+            <>
+              {brief.bullets.length > 0 && (
+                <ul style={{ margin: 0, paddingLeft: 14, listStyle: "disc" }}>
+                  {brief.bullets.map((b, i) => (
+                    <li key={i} style={{ color: "var(--fg)", marginBottom: 2 }}>
+                      {b}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {brief.wikiHits.length > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  <span
+                    className="t-mono text-fg-soft"
+                    style={{ fontSize: 9.5, letterSpacing: "0.06em" }}
+                  >
+                    WIKI
+                  </span>
+                  <ul style={{ margin: 0, paddingLeft: 14, listStyle: "none" }}>
+                    {brief.wikiHits.slice(0, 3).map((h, i) => (
+                      <li
+                        key={i}
+                        className="t-mono"
+                        style={{ fontSize: 10.5, color: "var(--fg-soft)" }}
+                      >
+                        {h.category}/{h.path}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {brief.priorMentions.length > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  <span
+                    className="t-mono text-fg-soft"
+                    style={{ fontSize: 9.5, letterSpacing: "0.06em" }}
+                  >
+                    DAILY
+                  </span>
+                  <ul style={{ margin: 0, paddingLeft: 14, listStyle: "none" }}>
+                    {brief.priorMentions.slice(0, 3).map((m, i) => (
+                      <li
+                        key={i}
+                        style={{
+                          fontSize: 11,
+                          color: "var(--fg-soft)",
+                          marginBottom: 2,
+                        }}
+                      >
+                        <span className="t-mono" style={{ marginRight: 4 }}>
+                          {m.date.slice(5)}
+                        </span>
+                        {m.line}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -149,13 +315,95 @@ export function CalendarSection() {
   );
 }
 
+const INBOX_SYNOPSIS_KEY = "daycmd.inbox.synopsis";
+
 export function InboxSection() {
   const mail = useMailOverlay();
   const { data } = usePoll<GmailResp>("/api/gmail", 60_000);
   const messages = data && "messages" in data ? data.messages : [];
   const unread = messages.filter((m) => m.unread).length;
+
+  const [synopsisOn, setSynopsisOn] = useState(false);
+  const [synopsisMap, setSynopsisMap] = useState<Record<string, string>>({});
+  const [synopsisBusy, setSynopsisBusy] = useState(false);
+  useEffect(() => {
+    try {
+      setSynopsisOn(localStorage.getItem(INBOX_SYNOPSIS_KEY) === "1");
+    } catch {}
+  }, []);
+  function toggleSynopsis() {
+    setSynopsisOn((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(INBOX_SYNOPSIS_KEY, next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  }
+
+  const visibleIds = messages.slice(0, 5).map((m) => m.id);
+  useEffect(() => {
+    if (!synopsisOn || visibleIds.length === 0) return;
+    const missing = visibleIds.filter((id) => !synopsisMap[id]);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    async function load() {
+      setSynopsisBusy(true);
+      try {
+        const payload = messages
+          .filter((m) => missing.includes(m.id))
+          .map((m) => ({
+            id: m.id,
+            from: m.from,
+            subject: m.subject,
+            snippet: m.snippet,
+          }));
+        const res = await fetch("/api/micro/inbox-synopsis", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ messages: payload }),
+        });
+        const json = (await res.json()) as { synopsis: Record<string, string> };
+        if (!cancelled) {
+          setSynopsisMap((prev) => ({ ...prev, ...(json.synopsis ?? {}) }));
+        }
+      } catch {}
+      finally {
+        if (!cancelled) setSynopsisBusy(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [synopsisOn, visibleIds.join(",")]);
   const headerActions = (
     <span className="flex items-center gap-1.5 ml-2">
+      <button
+        type="button"
+        onClick={toggleSynopsis}
+        title={synopsisOn ? "Hide AI synopses" : "Show one-line synopsis per email"}
+        className="t-mono"
+        style={{
+          background: synopsisOn
+            ? "oklch(from var(--c-agent) l c h / 0.14)"
+            : "transparent",
+          border: `1px solid ${synopsisOn ? "oklch(from var(--c-agent) l c h / 0.32)" : "var(--rule)"}`,
+          borderRadius: 6,
+          padding: "2px 8px",
+          fontSize: 10,
+          color: synopsisOn ? "var(--c-agent)" : "var(--fg-soft)",
+          cursor: "pointer",
+          letterSpacing: "0.04em",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+        }}
+      >
+        <span style={{ fontSize: 11, lineHeight: 1 }}>✦</span>
+        {synopsisBusy ? "…" : "synopsis"}
+      </button>
       <button
         type="button"
         onClick={() => mail.openInbox()}
@@ -206,43 +454,76 @@ export function InboxSection() {
   );
   return (
     <SectionMini title="Inbox" count={unread} accent="gmail" right={headerActions}>
-      {messages.slice(0, 5).map((m) => (
-        <button
-          key={m.id}
-          onClick={() => mail.openThread(m.threadId)}
-          className="flex items-center gap-2 py-1 text-[13px] hover:opacity-80 w-full text-left"
-          style={{ background: "transparent", border: "none", padding: "6px 0", cursor: "pointer" }}
-        >
-          <span
-            style={{
-              width: 5,
-              height: 5,
-              borderRadius: 99,
-              background: m.unread ? "var(--c-gmail)" : "transparent",
-              flexShrink: 0,
-            }}
-          />
-          <Envelope c="var(--c-gmail)" s={12} />
-          <div className="flex-1 min-w-0">
-            <div
-              className="truncate"
+      {messages.slice(0, 5).map((m) => {
+        const synop = synopsisOn ? synopsisMap[m.id] : undefined;
+        return (
+          <button
+            key={m.id}
+            onClick={() => mail.openThread(m.threadId)}
+            className="flex items-start gap-2 py-1 text-[13px] hover:opacity-80 w-full text-left"
+            style={{ background: "transparent", border: "none", padding: "6px 0", cursor: "pointer" }}
+          >
+            <span
               style={{
-                color: m.unread ? "var(--fg)" : "var(--fg-soft)",
-                fontWeight: m.unread ? 500 : 400,
-                fontSize: 12,
+                width: 5,
+                height: 5,
+                borderRadius: 99,
+                background: m.unread ? "var(--c-gmail)" : "transparent",
+                flexShrink: 0,
+                marginTop: 5,
               }}
-            >
-              {m.from}
+            />
+            <Envelope c="var(--c-gmail)" s={12} />
+            <div className="flex-1 min-w-0">
+              <div
+                className="truncate"
+                style={{
+                  color: m.unread ? "var(--fg)" : "var(--fg-soft)",
+                  fontWeight: m.unread ? 500 : 400,
+                  fontSize: 12,
+                }}
+              >
+                {m.from}
+              </div>
+              <div
+                className="truncate text-fg-soft"
+                style={{ fontSize: 11.5, letterSpacing: "-0.005em" }}
+              >
+                {m.subject}
+              </div>
+              {synop && (
+                <div
+                  className="truncate"
+                  style={{
+                    fontSize: 11,
+                    color: "var(--c-agent)",
+                    marginTop: 2,
+                    letterSpacing: "-0.005em",
+                    opacity: 0.85,
+                  }}
+                  title={synop}
+                >
+                  <span style={{ marginRight: 4 }}>✦</span>
+                  {synop}
+                </div>
+              )}
+              {synopsisOn && !synop && synopsisBusy && (
+                <div
+                  className="t-mono"
+                  style={{
+                    fontSize: 10,
+                    color: "var(--fg-soft)",
+                    marginTop: 2,
+                    opacity: 0.6,
+                  }}
+                >
+                  ✦ …
+                </div>
+              )}
             </div>
-            <div
-              className="truncate text-fg-soft"
-              style={{ fontSize: 11.5, letterSpacing: "-0.005em" }}
-            >
-              {m.subject}
-            </div>
-          </div>
-        </button>
-      ))}
+          </button>
+        );
+      })}
       {messages.length === 0 && (
         <p className="text-[12px] text-fg-soft py-1">Inbox at zero. Rare. Enjoy it.</p>
       )}

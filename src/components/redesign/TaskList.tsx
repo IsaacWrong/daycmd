@@ -28,20 +28,31 @@ function fmtDue(due: string | null): string {
   return due.slice(5);
 }
 
+type AiSuggestion =
+  | { kind: "due"; due: string | null; priority: string | null; reason: string }
+  | { kind: "split"; subtasks: string[]; reason: string }
+  | { kind: "reschedule"; due: string | null; reason: string }
+  | { kind: "error"; message: string }
+  | { kind: "loading"; action: "due" | "split" | "reschedule" };
+
 function TaskRow({
   t,
   onToggle,
   onEdit,
+  onSplit,
 }: {
   t: ObsidianTask;
   onToggle: (t: ObsidianTask) => void;
   onEdit: (t: ObsidianTask, draft: string) => Promise<{ ok: boolean; error?: string }>;
+  onSplit: (t: ObsidianTask, subtasks: string[]) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [ai, setAi] = useState<AiSuggestion | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
 
   useEffect(() => {
     if (editing) {
@@ -69,6 +80,74 @@ function TaskRow({
       setEditing(false);
     } else {
       setError(res.error ?? "save failed");
+    }
+  }
+
+  async function runAi(action: "due" | "split" | "reschedule") {
+    setAi({ kind: "loading", action });
+    setAiBusy(true);
+    try {
+      if (action === "due") {
+        const res = await fetch("/api/micro/task-infer-due", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: t.text }),
+        });
+        const json = (await res.json()) as
+          | { due: string | null; priority: string | null; reason: string }
+          | { error: string };
+        if ("error" in json) setAi({ kind: "error", message: json.error });
+        else setAi({ kind: "due", ...json });
+      } else if (action === "split") {
+        const res = await fetch("/api/micro/task-split", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: t.text }),
+        });
+        const json = (await res.json()) as
+          | { subtasks: string[]; reason: string }
+          | { error: string };
+        if ("error" in json) setAi({ kind: "error", message: json.error });
+        else setAi({ kind: "split", ...json });
+      } else {
+        const res = await fetch("/api/micro/task-reschedule", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: t.text, currentDue: t.due }),
+        });
+        const json = (await res.json()) as
+          | { due: string | null; reason: string }
+          | { error: string };
+        if ("error" in json) setAi({ kind: "error", message: json.error });
+        else setAi({ kind: "reschedule", ...json });
+      }
+    } catch (e) {
+      setAi({ kind: "error", message: (e as Error).message });
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function acceptDue(due: string) {
+    setAiBusy(true);
+    try {
+      const draftStr = `${t.text}${t.priority ? ` !${t.priority}` : ""} 📅 ${due}`;
+      const res = await onEdit(t, draftStr);
+      if (res.ok) setAi(null);
+      else setAi({ kind: "error", message: res.error ?? "save failed" });
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function acceptSplit(subtasks: string[]) {
+    setAiBusy(true);
+    try {
+      const res = await onSplit(t, subtasks);
+      if (res.ok) setAi(null);
+      else setAi({ kind: "error", message: res.error ?? "split failed" });
+    } finally {
+      setAiBusy(false);
     }
   }
 
@@ -132,50 +211,267 @@ function TaskRow({
     );
   }
 
+  const aiBtnStyle: React.CSSProperties = {
+    background: "transparent",
+    border: 0,
+    padding: "0 4px",
+    fontSize: 10,
+    color: "var(--fg-soft)",
+    cursor: aiBusy ? "wait" : "pointer",
+    letterSpacing: "0.04em",
+    fontFamily:
+      "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace",
+  };
+
   return (
-    <div className="flex items-center gap-3 py-2 text-[14px] group">
-      <button
-        type="button"
-        onClick={() => onToggle(t)}
-        className={`check ${t.done ? "done" : ""}`}
-        aria-label={t.done ? "Mark undone" : "Mark done"}
-      />
-      <span className="src-dot src-tasks" />
-      <button
-        type="button"
-        onClick={startEdit}
-        disabled={t.done}
-        className="flex-1 truncate text-left"
-        title="Click to edit"
-        style={{
-          background: "transparent",
-          border: 0,
-          padding: 0,
-          fontFamily: "inherit",
-          fontSize: 14,
-          letterSpacing: "-0.005em",
-          color: "var(--fg)",
-          textDecoration: t.done ? "line-through" : "none",
-          opacity: t.done ? 0.5 : 1,
-          cursor: t.done ? "default" : "text",
-        }}
-      >
-        {t.text}
-      </button>
-      {t.priority && (
-        <span
-          className="t-mono text-[11px]"
-          style={{ color: prioColor, letterSpacing: "0.04em" }}
+    <div className="group">
+      <div className="flex items-center gap-3 py-2 text-[14px]">
+        <button
+          type="button"
+          onClick={() => onToggle(t)}
+          className={`check ${t.done ? "done" : ""}`}
+          aria-label={t.done ? "Mark undone" : "Mark done"}
+        />
+        <span className="src-dot src-tasks" />
+        <button
+          type="button"
+          onClick={startEdit}
+          disabled={t.done}
+          className="flex-1 truncate text-left"
+          title="Click to edit"
+          style={{
+            background: "transparent",
+            border: 0,
+            padding: 0,
+            fontFamily: "inherit",
+            fontSize: 14,
+            letterSpacing: "-0.005em",
+            color: "var(--fg)",
+            textDecoration: t.done ? "line-through" : "none",
+            opacity: t.done ? 0.5 : 1,
+            cursor: t.done ? "default" : "text",
+          }}
         >
-          {PRIO_GLYPH[t.priority]}
+          {t.text}
+        </button>
+        {!t.done && (
+          <span
+            className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+            aria-label="AI task actions"
+          >
+            <button
+              type="button"
+              onClick={() => runAi("due")}
+              disabled={aiBusy}
+              title="Infer due date + priority"
+              style={aiBtnStyle}
+            >
+              ✦ due
+            </button>
+            <button
+              type="button"
+              onClick={() => runAi("split")}
+              disabled={aiBusy}
+              title="Break into subtasks"
+              style={aiBtnStyle}
+            >
+              ✦ split
+            </button>
+            <button
+              type="button"
+              onClick={() => runAi("reschedule")}
+              disabled={aiBusy}
+              title="Suggest a better day"
+              style={aiBtnStyle}
+            >
+              ✦ when
+            </button>
+          </span>
+        )}
+        {t.priority && (
+          <span
+            className="t-mono text-[11px]"
+            style={{ color: prioColor, letterSpacing: "0.04em" }}
+          >
+            {PRIO_GLYPH[t.priority]}
+          </span>
+        )}
+        <span
+          className="t-mono t-num text-[11px] text-fg-soft"
+          style={{ minWidth: 56, textAlign: "right" }}
+        >
+          {fmtDue(t.due)}
         </span>
+      </div>
+      {ai && (
+        <div
+          style={{
+            padding: "6px 10px 8px 44px",
+            borderLeft: "1px solid oklch(from var(--c-agent) l c h / 0.18)",
+            marginLeft: 8,
+            marginBottom: 4,
+            fontSize: 11.5,
+            lineHeight: 1.5,
+            color: "var(--fg-soft)",
+          }}
+        >
+          {ai.kind === "loading" && <span>✦ thinking…</span>}
+          {ai.kind === "error" && (
+            <span style={{ color: "var(--c-error)" }}>{ai.message}</span>
+          )}
+          {ai.kind === "due" && (
+            <div className="flex items-center gap-2">
+              <span style={{ color: "var(--c-agent)" }}>✦</span>
+              <span>
+                {ai.due ? <strong>{ai.due}</strong> : <em>no due signal</em>}
+                {ai.priority && (
+                  <span className="t-mono" style={{ marginLeft: 6, fontSize: 10 }}>
+                    !{ai.priority}
+                  </span>
+                )}
+                <span style={{ marginLeft: 8 }}>— {ai.reason}</span>
+              </span>
+              <span className="ml-auto flex gap-1.5">
+                {ai.due && (
+                  <button
+                    type="button"
+                    onClick={() => acceptDue(ai.due!)}
+                    disabled={aiBusy}
+                    className="t-mono"
+                    style={{
+                      background: "transparent",
+                      border: "1px solid var(--rule)",
+                      borderRadius: 4,
+                      padding: "2px 8px",
+                      fontSize: 10,
+                      color: "var(--c-good)",
+                      cursor: aiBusy ? "wait" : "pointer",
+                    }}
+                  >
+                    ✓ apply
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setAi(null)}
+                  className="t-mono"
+                  style={{
+                    background: "transparent",
+                    border: "1px solid var(--rule)",
+                    borderRadius: 4,
+                    padding: "2px 8px",
+                    fontSize: 10,
+                    color: "var(--fg-soft)",
+                    cursor: "pointer",
+                  }}
+                >
+                  dismiss
+                </button>
+              </span>
+            </div>
+          )}
+          {ai.kind === "reschedule" && (
+            <div className="flex items-center gap-2">
+              <span style={{ color: "var(--c-agent)" }}>✦</span>
+              <span>
+                {ai.due ? <strong>{ai.due}</strong> : <em>no date</em>}
+                <span style={{ marginLeft: 8 }}>— {ai.reason}</span>
+              </span>
+              <span className="ml-auto flex gap-1.5">
+                {ai.due && (
+                  <button
+                    type="button"
+                    onClick={() => acceptDue(ai.due!)}
+                    disabled={aiBusy}
+                    className="t-mono"
+                    style={{
+                      background: "transparent",
+                      border: "1px solid var(--rule)",
+                      borderRadius: 4,
+                      padding: "2px 8px",
+                      fontSize: 10,
+                      color: "var(--c-good)",
+                      cursor: aiBusy ? "wait" : "pointer",
+                    }}
+                  >
+                    ✓ reschedule
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setAi(null)}
+                  className="t-mono"
+                  style={{
+                    background: "transparent",
+                    border: "1px solid var(--rule)",
+                    borderRadius: 4,
+                    padding: "2px 8px",
+                    fontSize: 10,
+                    color: "var(--fg-soft)",
+                    cursor: "pointer",
+                  }}
+                >
+                  dismiss
+                </button>
+              </span>
+            </div>
+          )}
+          {ai.kind === "split" && (
+            <div>
+              <div className="flex items-center gap-2" style={{ marginBottom: 4 }}>
+                <span style={{ color: "var(--c-agent)" }}>✦</span>
+                <span>{ai.reason}</span>
+                <span className="ml-auto flex gap-1.5">
+                  {ai.subtasks.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => acceptSplit(ai.subtasks)}
+                      disabled={aiBusy}
+                      className="t-mono"
+                      style={{
+                        background: "transparent",
+                        border: "1px solid var(--rule)",
+                        borderRadius: 4,
+                        padding: "2px 8px",
+                        fontSize: 10,
+                        color: "var(--c-good)",
+                        cursor: aiBusy ? "wait" : "pointer",
+                      }}
+                    >
+                      ✓ create {ai.subtasks.length}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setAi(null)}
+                    className="t-mono"
+                    style={{
+                      background: "transparent",
+                      border: "1px solid var(--rule)",
+                      borderRadius: 4,
+                      padding: "2px 8px",
+                      fontSize: 10,
+                      color: "var(--fg-soft)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    dismiss
+                  </button>
+                </span>
+              </div>
+              {ai.subtasks.length > 0 && (
+                <ul style={{ margin: 0, paddingLeft: 16, listStyle: "disc" }}>
+                  {ai.subtasks.map((s, i) => (
+                    <li key={i} style={{ color: "var(--fg)" }}>
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
       )}
-      <span
-        className="t-mono t-num text-[11px] text-fg-soft"
-        style={{ minWidth: 56, textAlign: "right" }}
-      >
-        {fmtDue(t.due)}
-      </span>
     </div>
   );
 }
@@ -420,6 +716,35 @@ export function TaskList({ projectFilter }: { projectFilter?: string }) {
     }
   }
 
+  async function split(
+    t: ObsidianTask,
+    subtasks: string[],
+  ): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const file = t.file.split("/").pop()?.replace(/\.md$/, "");
+      for (const text of subtasks) {
+        const res = await fetch("/api/obsidian/tasks", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            text,
+            file,
+            due: t.due ?? undefined,
+            priority: t.priority ?? undefined,
+          }),
+        });
+        if (!res.ok) {
+          const j = (await res.json().catch(() => ({}))) as { error?: string };
+          return { ok: false, error: j.error ?? `HTTP ${res.status}` };
+        }
+      }
+      mutate("/api/obsidian/tasks");
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  }
+
   async function edit(
     t: ObsidianTask,
     rawDraft: string,
@@ -501,7 +826,13 @@ export function TaskList({ projectFilter }: { projectFilter?: string }) {
               )}
             </div>
             {items.map((t) => (
-              <TaskRow key={t.id} t={t} onToggle={toggle} onEdit={edit} />
+              <TaskRow
+                key={t.id}
+                t={t}
+                onToggle={toggle}
+                onEdit={edit}
+                onSplit={split}
+              />
             ))}
           </div>
         );

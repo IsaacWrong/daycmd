@@ -11,8 +11,24 @@ import { Markdown } from "@/components/Markdown";
 
 type RankResp = { ranked: Array<{ id: string; reason: string }>; error?: string };
 type BriefResp = { brief: { ts: number; output: string } | null };
+type FocusResp = { focus: string | null; cached?: boolean; error?: string };
+type SuggestionTask = {
+  file: string;
+  line: number;
+  text: string;
+  due: string | null;
+  priority: string | null;
+};
+type Suggestion = {
+  id: string;
+  action: "infer-due" | "reschedule" | "split";
+  label: string;
+  task: SuggestionTask;
+};
+type SuggestionsResp = { suggestions: Suggestion[] };
 const SMART_RANK_KEY = "daycmd.upnext.smart";
-const BRIEF_COLLAPSED_KEY = "daycmd.brief.collapsed";
+const SUGGESTIONS_OPEN_KEY = "daycmd.suggestions.open";
+const BRIEF_EXPANDED_KEY = "daycmd.brief.expanded";
 
 type TasksResp = { tasks: ObsidianTask[] };
 type GhResp = GhSummary | { error: string };
@@ -252,19 +268,55 @@ export function Overview({
   const today = new Date().toISOString().slice(0, 10);
   const allTasks = tasks?.tasks ?? [];
 
-  const brief = usePoll<BriefResp>("/api/micro/morning-brief", 10 * 60_000).data;
-  const [briefBusy, setBriefBusy] = useState(false);
-  const [briefCollapsed, setBriefCollapsed] = useState(false);
+  const focus = usePoll<FocusResp>("/api/micro/today-focus", 30 * 60_000).data;
+  const [focusBusy, setFocusBusy] = useState(false);
+  async function refreshFocus() {
+    setFocusBusy(true);
+    try {
+      // Bust cache by hitting endpoint directly is fine; cache is server-side bucketed.
+      // To force re-gen, append cache-bust param; harmless since the route ignores params.
+      await fetch(`/api/micro/today-focus?t=${Date.now()}`, { cache: "no-store" });
+      mutate("/api/micro/today-focus");
+    } finally {
+      setFocusBusy(false);
+    }
+  }
+
+  const suggestionsResp = usePoll<SuggestionsResp>(
+    "/api/micro/today-suggestions",
+    15 * 60_000,
+  ).data;
+  const suggestions = suggestionsResp?.suggestions ?? [];
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   useEffect(() => {
     try {
-      setBriefCollapsed(localStorage.getItem(BRIEF_COLLAPSED_KEY) === "1");
+      const stored = localStorage.getItem(SUGGESTIONS_OPEN_KEY);
+      if (stored !== null) setSuggestionsOpen(stored === "1");
     } catch {}
   }, []);
-  function toggleBriefCollapsed() {
-    setBriefCollapsed((prev) => {
+  function toggleSuggestionsOpen() {
+    setSuggestionsOpen((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem(BRIEF_COLLAPSED_KEY, next ? "1" : "0");
+        localStorage.setItem(SUGGESTIONS_OPEN_KEY, next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  }
+
+  const brief = usePoll<BriefResp>("/api/micro/morning-brief", 30 * 60_000).data;
+  const [briefBusy, setBriefBusy] = useState(false);
+  const [briefExpanded, setBriefExpanded] = useState(false);
+  useEffect(() => {
+    try {
+      setBriefExpanded(localStorage.getItem(BRIEF_EXPANDED_KEY) === "1");
+    } catch {}
+  }, []);
+  function toggleBriefExpanded() {
+    setBriefExpanded((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(BRIEF_EXPANDED_KEY, next ? "1" : "0");
       } catch {}
       return next;
     });
@@ -278,7 +330,6 @@ export function Overview({
       setBriefBusy(false);
     }
   }
-
   const briefIsToday =
     brief?.brief &&
     new Date(brief.brief.ts).toISOString().slice(0, 10) === today;
@@ -414,46 +465,186 @@ export function Overview({
   }
   const visibleStats = stats.slice(0, 4);
 
+  // Client-side alerts — only show when conditions trigger. No AI cost.
+  const alertsHud: string[] = [];
+  if (overdueCount >= 3) {
+    alertsHud.push(`${overdueCount} overdue tasks — momentum slipping.`);
+  }
+  const nowHr = new Date().getHours();
+  if (nowHr < 11 && allTasks.some((t) => t.priority === "high" || t.priority === "highest")) {
+    const hi = allTasks.filter(
+      (t) => (t.priority === "high" || t.priority === "highest") && !t.done && !t.cancelled,
+    ).length;
+    if (hi > 0 && overdueCount < 3) {
+      alertsHud.push(`Quiet morning — best window for the ${hi} high-pri task${hi === 1 ? "" : "s"}.`);
+    }
+  }
+  if (openErrors >= 5) {
+    alertsHud.push(`${openErrors} open errors — worth a sweep.`);
+  }
+
+  const [busySuggestion, setBusySuggestion] = useState<string | null>(null);
+  const [suggestionResult, setSuggestionResult] = useState<
+    Record<string, { kind: "ok" | "error"; message: string }>
+  >({});
+
+  async function applySuggestion(s: Suggestion) {
+    setBusySuggestion(s.id);
+    try {
+      let inferDue: string | null = null;
+      let inferPriority: string | null = null;
+      let subtasks: string[] = [];
+
+      if (s.action === "infer-due") {
+        const r = await fetch("/api/micro/task-infer-due", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: s.task.text }),
+        });
+        const j = (await r.json()) as {
+          due: string | null;
+          priority: string | null;
+          error?: string;
+        };
+        if (j.error) throw new Error(j.error);
+        inferDue = j.due;
+        inferPriority = j.priority;
+      } else if (s.action === "reschedule") {
+        const r = await fetch("/api/micro/task-reschedule", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: s.task.text, currentDue: s.task.due }),
+        });
+        const j = (await r.json()) as { due: string | null; error?: string };
+        if (j.error) throw new Error(j.error);
+        inferDue = j.due;
+      } else {
+        const r = await fetch("/api/micro/task-split", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: s.task.text }),
+        });
+        const j = (await r.json()) as { subtasks: string[]; error?: string };
+        if (j.error) throw new Error(j.error);
+        subtasks = j.subtasks ?? [];
+      }
+
+      if (s.action === "split") {
+        if (subtasks.length === 0) {
+          setSuggestionResult((p) => ({
+            ...p,
+            [s.id]: { kind: "error", message: "Task already atomic — nothing to split." },
+          }));
+          return;
+        }
+        const file = s.task.file.split("/").pop()?.replace(/\.md$/, "");
+        for (const text of subtasks) {
+          const res = await fetch("/api/obsidian/tasks", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              text,
+              file,
+              due: s.task.due ?? undefined,
+              priority: s.task.priority ?? undefined,
+            }),
+          });
+          if (!res.ok) {
+            const j = (await res.json().catch(() => ({}))) as { error?: string };
+            throw new Error(j.error ?? `HTTP ${res.status}`);
+          }
+        }
+        mutate("/api/obsidian/tasks");
+        mutate("/api/micro/today-suggestions");
+        setSuggestionResult((p) => ({
+          ...p,
+          [s.id]: { kind: "ok", message: `Created ${subtasks.length} subtasks.` },
+        }));
+      } else {
+        if (!inferDue) {
+          setSuggestionResult((p) => ({
+            ...p,
+            [s.id]: { kind: "error", message: "No date signal in this task." },
+          }));
+          return;
+        }
+        const res = await fetch("/api/obsidian/tasks", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            file: s.task.file,
+            line: s.task.line,
+            originalText: s.task.text,
+            text: s.task.text,
+            due: inferDue,
+            priority: inferPriority ?? s.task.priority ?? undefined,
+          }),
+        });
+        if (!res.ok) {
+          const j = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(j.error ?? `HTTP ${res.status}`);
+        }
+        mutate("/api/obsidian/tasks");
+        mutate("/api/micro/today-suggestions");
+        setSuggestionResult((p) => ({
+          ...p,
+          [s.id]: { kind: "ok", message: `Due → ${inferDue}.` },
+        }));
+      }
+    } catch (e) {
+      setSuggestionResult((p) => ({
+        ...p,
+        [s.id]: { kind: "error", message: (e as Error).message },
+      }));
+    } finally {
+      setBusySuggestion(null);
+    }
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 44 }}>
-      {/* Morning brief AI intel card */}
+      {/* Focus card — compact AI surface */}
       <section
         className="dimmable"
         style={{
           marginTop: -4,
-          border: "1px solid oklch(from var(--c-agent) l c h / 0.24)",
+          border: "1px solid oklch(from var(--c-agent) l c h / 0.18)",
           borderRadius: 10,
-          padding: "14px 18px",
-          background: "oklch(from var(--c-agent) l c h / 0.04)",
+          padding: "12px 18px",
+          background: "oklch(from var(--c-agent) l c h / 0.03)",
         }}
       >
-        <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
-          <span
-            className="t-eyebrow"
-            style={{ color: "var(--c-agent)", letterSpacing: "0.08em" }}
-          >
-            ✦ Morning Brief
+        <div className="flex items-baseline gap-2.5">
+          <span style={{ color: "var(--c-agent)", fontSize: 14, lineHeight: 1.2 }}>
+            ✦
           </span>
-          {brief?.brief && (
-            <span
-              className="t-mono text-fg-soft"
-              style={{ fontSize: 10 }}
-              title={new Date(brief.brief.ts).toLocaleString()}
-            >
-              {briefIsToday
-                ? new Date(brief.brief.ts).toLocaleTimeString([], {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })
-                : new Date(brief.brief.ts).toLocaleDateString()}
-            </span>
-          )}
-          <span className="ml-auto flex items-center gap-1.5">
+          <div className="flex-1 min-w-0">
+            {focus?.focus ? (
+              <p
+                style={{
+                  fontSize: 15,
+                  lineHeight: 1.45,
+                  color: "var(--fg)",
+                  letterSpacing: "-0.005em",
+                }}
+              >
+                {focus.focus}
+              </p>
+            ) : (
+              <p
+                className="text-fg-soft"
+                style={{ fontSize: 13, lineHeight: 1.45 }}
+              >
+                {focus?.error ?? "Picking today's focus…"}
+              </p>
+            )}
+          </div>
+          <span className="flex items-center gap-1.5">
             <button
               type="button"
-              onClick={runBrief}
-              disabled={briefBusy}
-              title="Run brief now"
+              onClick={refreshFocus}
+              disabled={focusBusy}
+              title="Re-pick focus"
               className="t-mono"
               style={{
                 background: "transparent",
@@ -461,52 +652,275 @@ export function Overview({
                 borderRadius: 6,
                 padding: "2px 8px",
                 fontSize: 10,
-                color: briefBusy ? "var(--fg-soft)" : "var(--c-agent)",
-                cursor: briefBusy ? "wait" : "pointer",
+                color: focusBusy ? "var(--fg-soft)" : "var(--c-agent)",
+                cursor: focusBusy ? "wait" : "pointer",
                 letterSpacing: "0.04em",
               }}
             >
-              {briefBusy ? "running…" : brief?.brief ? "refresh" : "run"}
+              {focusBusy ? "…" : "refresh"}
             </button>
-            {brief?.brief && (
-              <button
-                type="button"
-                onClick={toggleBriefCollapsed}
-                title={briefCollapsed ? "Expand" : "Collapse"}
+          </span>
+        </div>
+
+        {alertsHud.length > 0 && (
+          <div
+            style={{
+              marginTop: 10,
+              paddingTop: 8,
+              borderTop: "1px solid oklch(from var(--c-agent) l c h / 0.12)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+            }}
+          >
+            {alertsHud.map((a, i) => (
+              <div
+                key={i}
                 className="t-mono"
                 style={{
-                  background: "transparent",
-                  border: "1px solid var(--rule)",
+                  fontSize: 11,
+                  color: "var(--fg-soft)",
+                  letterSpacing: "0.01em",
+                }}
+              >
+                <span style={{ color: "var(--c-error)", marginRight: 6 }}>!</span>
+                {a}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {(suggestions.length > 0 || brief?.brief) && (
+          <div
+            style={{
+              marginTop: 10,
+              paddingTop: 8,
+              borderTop: "1px solid oklch(from var(--c-agent) l c h / 0.12)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            {suggestions.length > 0 && (
+              <button
+                type="button"
+                onClick={toggleSuggestionsOpen}
+                className="t-mono"
+                style={{
+                  background: suggestionsOpen
+                    ? "oklch(from var(--c-agent) l c h / 0.14)"
+                    : "transparent",
+                  border: `1px solid ${suggestionsOpen ? "oklch(from var(--c-agent) l c h / 0.32)" : "var(--rule)"}`,
                   borderRadius: 6,
                   padding: "2px 8px",
                   fontSize: 10,
-                  color: "var(--fg-soft)",
+                  color: suggestionsOpen ? "var(--c-agent)" : "var(--fg-soft)",
                   cursor: "pointer",
                   letterSpacing: "0.04em",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
                 }}
               >
-                {briefCollapsed ? "+" : "−"}
+                <span style={{ fontSize: 11, lineHeight: 1 }}>✦</span>
+                {suggestionsOpen ? "hide" : "suggested"} ({suggestions.length})
               </button>
             )}
-          </span>
-        </div>
-        {!brief?.brief && (
-          <p className="text-fg-soft" style={{ fontSize: 12 }}>
-            No brief yet today. Runs daily at 8am — hit run to generate now.
-          </p>
+            <button
+              type="button"
+              onClick={toggleBriefExpanded}
+              className="t-mono"
+              style={{
+                background: "transparent",
+                border: "1px solid var(--rule)",
+                borderRadius: 6,
+                padding: "2px 8px",
+                fontSize: 10,
+                color: "var(--fg-soft)",
+                cursor: "pointer",
+                letterSpacing: "0.04em",
+              }}
+            >
+              {briefExpanded ? "− full brief" : brief?.brief ? "+ full brief" : "+ run full brief"}
+            </button>
+            {brief?.brief && (
+              <span
+                className="t-mono text-fg-soft"
+                style={{ fontSize: 10 }}
+                title={new Date(brief.brief.ts).toLocaleString()}
+              >
+                brief {briefIsToday ? "today" : "stale"} ·{" "}
+                {new Date(brief.brief.ts).toLocaleString([], {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              </span>
+            )}
+          </div>
         )}
-        {brief?.brief && !briefIsToday && !briefCollapsed && (
-          <p
-            className="t-mono text-fg-soft"
-            style={{ fontSize: 10.5, marginBottom: 8 }}
+
+        {suggestionsOpen && suggestions.length > 0 && (
+          <div
+            style={{
+              marginTop: 10,
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+            }}
           >
-            Stale — last run{" "}
-            {new Date(brief.brief.ts).toLocaleDateString()}. Refresh for today.
-          </p>
+            {suggestions.map((s) => {
+              const result = suggestionResult[s.id];
+              const busy = busySuggestion === s.id;
+              return (
+                <div
+                  key={s.id}
+                  className="flex items-center gap-3"
+                  style={{
+                    fontSize: 12,
+                    padding: "4px 0",
+                  }}
+                >
+                  <span
+                    className="t-mono"
+                    style={{
+                      fontSize: 9,
+                      color: "var(--c-agent)",
+                      letterSpacing: "0.08em",
+                      width: 60,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {s.action === "infer-due"
+                      ? "DUE"
+                      : s.action === "reschedule"
+                        ? "WHEN"
+                        : "SPLIT"}
+                  </span>
+                  <span
+                    className="flex-1 truncate"
+                    style={{ color: "var(--fg)" }}
+                    title={s.task.text}
+                  >
+                    {s.label}
+                  </span>
+                  {result && (
+                    <span
+                      className="t-mono"
+                      style={{
+                        fontSize: 10,
+                        color:
+                          result.kind === "ok"
+                            ? "var(--c-good)"
+                            : "var(--c-error)",
+                      }}
+                    >
+                      {result.message}
+                    </span>
+                  )}
+                  {!result && (
+                    <button
+                      type="button"
+                      onClick={() => applySuggestion(s)}
+                      disabled={busy}
+                      className="t-mono"
+                      style={{
+                        background: "transparent",
+                        border: "1px solid var(--rule)",
+                        borderRadius: 4,
+                        padding: "2px 8px",
+                        fontSize: 10,
+                        color: busy ? "var(--fg-soft)" : "var(--c-good)",
+                        cursor: busy ? "wait" : "pointer",
+                        letterSpacing: "0.04em",
+                      }}
+                    >
+                      {busy ? "…" : "✓ apply"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
-        {brief?.brief && !briefCollapsed && (
-          <div style={{ fontSize: 13 }}>
-            <Markdown>{brief.brief.output}</Markdown>
+
+        {briefExpanded && (
+          <div
+            style={{
+              marginTop: 10,
+              paddingTop: 10,
+              borderTop: "1px solid oklch(from var(--c-agent) l c h / 0.12)",
+            }}
+          >
+            {!brief?.brief && (
+              <div className="flex items-center gap-2">
+                <p
+                  className="text-fg-soft"
+                  style={{ fontSize: 12, flex: 1 }}
+                >
+                  No brief yet today. Runs daily at 8am.
+                </p>
+                <button
+                  type="button"
+                  onClick={runBrief}
+                  disabled={briefBusy}
+                  className="t-mono"
+                  style={{
+                    background: "transparent",
+                    border: "1px solid var(--rule)",
+                    borderRadius: 6,
+                    padding: "2px 8px",
+                    fontSize: 10,
+                    color: briefBusy ? "var(--fg-soft)" : "var(--c-agent)",
+                    cursor: briefBusy ? "wait" : "pointer",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  {briefBusy ? "running…" : "run now"}
+                </button>
+              </div>
+            )}
+            {brief?.brief && (
+              <>
+                <div
+                  className="flex items-center gap-2"
+                  style={{ marginBottom: 6 }}
+                >
+                  <span
+                    className="t-eyebrow"
+                    style={{
+                      color: "var(--c-agent)",
+                      letterSpacing: "0.08em",
+                    }}
+                  >
+                    Full Brief
+                  </span>
+                  <button
+                    type="button"
+                    onClick={runBrief}
+                    disabled={briefBusy}
+                    className="t-mono ml-auto"
+                    style={{
+                      background: "transparent",
+                      border: "1px solid var(--rule)",
+                      borderRadius: 6,
+                      padding: "2px 8px",
+                      fontSize: 10,
+                      color: briefBusy ? "var(--fg-soft)" : "var(--c-agent)",
+                      cursor: briefBusy ? "wait" : "pointer",
+                      letterSpacing: "0.04em",
+                    }}
+                  >
+                    {briefBusy ? "running…" : "refresh"}
+                  </button>
+                </div>
+                <div style={{ fontSize: 12.5 }}>
+                  <Markdown>{brief.brief.output}</Markdown>
+                </div>
+              </>
+            )}
           </div>
         )}
       </section>
