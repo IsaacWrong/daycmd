@@ -58,7 +58,7 @@ function DayStripInner({ events, nowMs }: { events: CalEvent[]; nowMs: number })
   const spanMs = SPAN_HOURS * 3600 * 1000;
   const endMs = nowMs + spanMs;
 
-  const blocks = events
+  const rawBlocks = events
     .filter((e) => !e.allDay)
     .map((e, i) => {
       const s = new Date(e.start).getTime();
@@ -77,6 +77,51 @@ function DayStripInner({ events, nowMs }: { events: CalEvent[]; nowMs: number })
       };
     })
     .filter((b): b is NonNullable<typeof b> => b !== null);
+
+  // Assign lanes for overlap. Sort by start, greedy-pack into lanes.
+  const sorted = rawBlocks
+    .map((b, idx) => ({ b, idx }))
+    .sort((a, b) => a.b.leftPct - b.b.leftPct);
+  const laneEnds: number[] = [];
+  const laneByIdx = new Map<number, number>();
+  const groupByIdx = new Map<number, number>();
+  let curGroup = -1;
+  let curGroupEnd = -Infinity;
+  const EPS = 0.0001;
+  for (const { b, idx } of sorted) {
+    let lane = laneEnds.findIndex((e) => e <= b.leftPct + EPS);
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(0);
+    }
+    laneEnds[lane] = b.leftPct + b.widthPct;
+    laneByIdx.set(idx, lane);
+    if (b.leftPct + EPS >= curGroupEnd) {
+      curGroup++;
+      curGroupEnd = b.leftPct + b.widthPct;
+    } else {
+      curGroupEnd = Math.max(curGroupEnd, b.leftPct + b.widthPct);
+    }
+    groupByIdx.set(idx, curGroup);
+  }
+  const groupLaneCount = new Map<number, number>();
+  for (const [idx, lane] of laneByIdx) {
+    const g = groupByIdx.get(idx)!;
+    groupLaneCount.set(g, Math.max(groupLaneCount.get(g) ?? 0, lane + 1));
+  }
+
+  const INNER_TOP = 6;
+  const INNER_H = 24; // 36 - top(6) - bottom(6)
+  const blocks = rawBlocks.map((b, idx) => {
+    const lane = laneByIdx.get(idx) ?? 0;
+    const lanes = groupLaneCount.get(groupByIdx.get(idx) ?? 0) ?? 1;
+    const slot = INNER_H / lanes;
+    return {
+      ...b,
+      top: INNER_TOP + lane * slot,
+      height: slot,
+    };
+  });
 
   const nowDate = new Date(nowMs);
   const firstHour = new Date(nowDate);
@@ -121,8 +166,8 @@ function DayStripInner({ events, nowMs }: { events: CalEvent[]; nowMs: number })
             title={b.label}
             className="absolute flex items-center overflow-hidden whitespace-nowrap"
             style={{
-              top: 6,
-              bottom: 6,
+              top: b.top,
+              height: b.height,
               left: `${b.leftPct}%`,
               width: `calc(${b.widthPct}% - 2px)`,
               borderRadius: 4,
