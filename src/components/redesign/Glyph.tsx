@@ -1,7 +1,40 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useAgentActive } from "@/lib/agent-activity";
+
 type GlyphProps = { s?: number; c?: string };
+
+function beadPosForHour(hourFrac: number): { x: number; y: number; daytime: boolean } {
+  // Map 0–24h to angle (deg, top=0, clockwise). Noon → top, 6pm → east,
+  // midnight → bottom, 6am → west.
+  const deg = (hourFrac - 12) * 15;
+  const rad = (deg * Math.PI) / 180;
+  const r = 12.4;
+  const x = 16 + r * Math.sin(rad);
+  const y = 16 - r * Math.cos(rad);
+  return { x, y, daytime: hourFrac >= 6 && hourFrac <= 18 };
+}
 
 export const DaycmdMark = ({ s = 28 }: { s?: number }) => {
   const uid = "dm";
+  const active = useAgentActive();
+  const [hourFrac, setHourFrac] = useState<number | null>(null);
+
+  useEffect(() => {
+    const tick = () => {
+      const d = new Date();
+      setHourFrac(d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600);
+    };
+    tick();
+    const id = setInterval(tick, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // SSR fallback: render bead at noon to avoid hydration mismatch.
+  const safeHour = hourFrac ?? 12;
+  const bead = beadPosForHour(safeHour);
+
   return (
     <svg
       width={s}
@@ -21,6 +54,11 @@ export const DaycmdMark = ({ s = 28 }: { s?: number }) => {
           <stop offset="0%" stopColor="oklch(1 0 0 / 0.55)" />
           <stop offset="100%" stopColor="oklch(1 0 0 / 0)" />
         </radialGradient>
+        <radialGradient id={`${uid}-pulse`} cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="var(--c-agent)" stopOpacity="0.85" />
+          <stop offset="60%" stopColor="var(--c-agent)" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="var(--c-agent)" stopOpacity="0" />
+        </radialGradient>
       </defs>
       {/* outer ring */}
       <circle
@@ -31,18 +69,15 @@ export const DaycmdMark = ({ s = 28 }: { s?: number }) => {
         strokeOpacity="0.18"
         strokeWidth="1"
       />
-      {/* day arc — sweep from west horizon up over to east horizon */}
-      <g className="mark-spin">
-        <path
-          d="M3.6 16 A12.4 12.4 0 0 1 28.4 16"
-          stroke={`url(#${uid}-arc)`}
-          strokeWidth="2.4"
-          strokeLinecap="round"
-          fill="none"
-        />
-        {/* sun bead riding arc */}
-        <circle cx="28.4" cy="16" r="1.9" fill="var(--c-agent)" />
-      </g>
+      {/* day arc — top half */}
+      <path
+        d="M3.6 16 A12.4 12.4 0 0 1 28.4 16"
+        stroke={`url(#${uid}-arc)`}
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        fill="none"
+        opacity={bead.daytime ? 1 : 0.4}
+      />
       {/* horizon line */}
       <line
         x1="6"
@@ -65,7 +100,26 @@ export const DaycmdMark = ({ s = 28 }: { s?: number }) => {
       />
       {/* core glow */}
       <circle cx="16" cy="16" r="3.6" fill={`url(#${uid}-core)`} />
+      {/* agent activity pulse */}
+      {active && (
+        <circle
+          cx="16"
+          cy="16"
+          r="5"
+          fill={`url(#${uid}-pulse)`}
+          className="mark-pulse"
+        />
+      )}
       <circle cx="16" cy="16" r="1.3" fill="var(--fg)" />
+      {/* sun bead — position by hour of day */}
+      <circle
+        cx={bead.x}
+        cy={bead.y}
+        r={bead.daytime ? 1.9 : 1.5}
+        fill={bead.daytime ? "var(--c-agent)" : "var(--fg)"}
+        opacity={bead.daytime ? 1 : 0.45}
+        style={{ transition: "cx 600ms ease, cy 600ms ease" }}
+      />
     </svg>
   );
 };

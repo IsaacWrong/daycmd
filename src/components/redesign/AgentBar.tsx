@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { SKILLS, MODEL_CHOICES, isValidModel, type SkillDef } from "@/lib/skills-defs";
 import { Paperclip, Sun } from "./Glyph";
 import { useAgent, RUN_SKILL_EVENT, type Attachment } from "./useAgent";
+import { setAgentActive } from "@/lib/agent-activity";
 
 const CHAT_MODEL_LS_KEY = "daycmd.chat.model";
 import { fileToAttachment } from "./agent-bar/attachments";
@@ -107,6 +108,11 @@ export function AgentBar({
   useEffect(() => {
     if (variant !== "wide") return;
     if (agent.busy && !barOpen) setBarOpen(true);
+  }, [agent.busy]);
+
+  useEffect(() => {
+    setAgentActive(agent.busy);
+    return () => setAgentActive(false);
   }, [agent.busy]);
 
   useEffect(() => {

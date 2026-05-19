@@ -808,6 +808,17 @@ button { font-family: inherit; }
   transform-origin: center;
 }
 
+@keyframes mark-pulse {
+  0% { transform: scale(0.7); opacity: 0.9; }
+  60% { transform: scale(2.4); opacity: 0; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+.mark-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: mark-pulse 1400ms cubic-bezier(0.22, 0.61, 0.24, 1) infinite;
+}
+
 /* ── Sidebar resizer ─────────────────────────────────────────────── */
 .nav-resizer {
   position: relative;
