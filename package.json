@@ -6,6 +6,7 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
+    "start:prod": "next start -p 3210",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
