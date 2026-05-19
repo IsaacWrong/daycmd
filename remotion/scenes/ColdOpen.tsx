@@ -84,8 +84,8 @@ export const ColdOpen: React.FC = () => {
             transform: `translateY(${taglineShift}px)`,
           }}
         >
-          local-first new-tab page for people juggling a vault, a job,
-          and three side projects.
+          local-first new-tab page for people juggling work, personal,
+          and side projects.
         </div>
         <div
           style={{

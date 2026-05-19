@@ -85,6 +85,8 @@ export const Outro: React.FC = () => {
         >
           <span>github.com/IsaacWrong/daycmd</span>
           <span style={{ opacity: 0.4 }}>·</span>
+          <span>github.com/sponsors/IsaacWrong</span>
+          <span style={{ opacity: 0.4 }}>·</span>
           <span>MIT</span>
         </div>
       </AbsoluteFill>
