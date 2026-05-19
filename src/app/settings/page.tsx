@@ -22,7 +22,13 @@ type Settings = {
 
 const EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"];
 
-type GoogleStatus = { configured: boolean; connected: boolean };
+type GoogleStatus = {
+  configured: boolean;
+  connected: boolean;
+  needsReauth?: boolean;
+  lastError?: string | null;
+  lastErrorAt?: number | null;
+};
 
 type EnvStatus = {
   vaultPath: { present: boolean; valid: boolean; reason?: string };
@@ -376,26 +382,59 @@ export default function SettingsPage() {
                   <div className="t-mono text-[10px] text-fg-soft mt-1">
                     gmail.readonly · gmail.modify · gmail.send · calendar · calendar.events
                   </div>
+                  {google?.needsReauth && google.lastError && (
+                    <div
+                      className="t-mono text-[10px] mt-1.5"
+                      style={{ color: "var(--c-error)", maxWidth: 380 }}
+                    >
+                      reauth required · {google.lastError}
+                      {google.lastErrorAt && (
+                        <span className="text-fg-soft">
+                          {" "}
+                          · {new Date(google.lastErrorAt).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <span
                     className="t-mono"
                     style={{
                       fontSize: 11,
-                      color: google?.connected
-                        ? "var(--c-good)"
-                        : google?.configured
-                          ? "var(--c-error)"
-                          : "var(--fg-soft)",
+                      color: google?.needsReauth
+                        ? "var(--c-error)"
+                        : google?.connected
+                          ? "var(--c-good)"
+                          : google?.configured
+                            ? "var(--c-error)"
+                            : "var(--fg-soft)",
                     }}
                   >
-                    {google?.connected
-                      ? "connected"
-                      : google?.configured
-                        ? "not connected"
-                        : "not configured"}
+                    {google?.needsReauth
+                      ? "reauth required"
+                      : google?.connected
+                        ? "connected"
+                        : google?.configured
+                          ? "not connected"
+                          : "not configured"}
                   </span>
-                  {google?.connected && (
+                  {google?.needsReauth && (
+                    <a
+                      href="/api/auth/google"
+                      className="t-mono"
+                      style={{
+                        ...FIELD_STYLE,
+                        fontSize: 11,
+                        padding: "3px 8px",
+                        cursor: "pointer",
+                        color: "var(--c-agent)",
+                      }}
+                    >
+                      reconnect
+                    </a>
+                  )}
+                  {google?.connected && !google?.needsReauth && (
                     <button
                       type="button"
                       onClick={disconnectGoogle}

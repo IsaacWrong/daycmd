@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getInbox } from "@/lib/gmail";
-import { status } from "@/lib/google";
+import { clearError, recordError, status } from "@/lib/google";
 
 export const dynamic = "force-dynamic";
 
@@ -12,11 +12,11 @@ export async function GET() {
     return NextResponse.json({ error: "not connected", ...s }, { status: 200 });
   try {
     const inbox = await getInbox({ max: 50 });
-    return NextResponse.json({ messages: inbox.messages, ...s });
+    clearError();
+    return NextResponse.json({ messages: inbox.messages, ...status() });
   } catch (e) {
-    return NextResponse.json(
-      { error: (e as Error).message, ...s },
-      { status: 500 },
-    );
+    const msg = (e as Error).message;
+    recordError(msg);
+    return NextResponse.json({ error: msg, ...status() }, { status: 500 });
   }
 }

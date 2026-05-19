@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createEvent, getEvents } from "@/lib/calendar";
-import { status } from "@/lib/google";
+import { clearError, recordError, status } from "@/lib/google";
 
 export const dynamic = "force-dynamic";
 
@@ -41,12 +41,12 @@ export async function GET(req: Request) {
       wideFrom && wideTo
         ? await getEvents({ from: wideFrom, to: wideTo })
         : await getEvents(36);
-    return NextResponse.json({ events, ...s });
+    clearError();
+    return NextResponse.json({ events, ...status() });
   } catch (e) {
-    return NextResponse.json(
-      { error: (e as Error).message, ...s },
-      { status: 500 },
-    );
+    const msg = (e as Error).message;
+    recordError(msg);
+    return NextResponse.json({ error: msg, ...status() }, { status: 500 });
   }
 }
 
@@ -72,9 +72,11 @@ export async function POST(req: Request) {
   }
   try {
     const r = await createEvent(parsed.data);
+    clearError();
     return NextResponse.json(r);
   } catch (e) {
     const msg = (e as Error).message;
+    recordError(msg);
     const code = /insufficient|forbidden|permission/i.test(msg) ? 403 : 500;
     return NextResponse.json(
       {

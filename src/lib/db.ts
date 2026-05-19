@@ -130,5 +130,11 @@ export const db =
     try {
       d.exec("ALTER TABLE error_log ADD COLUMN resolved_at INTEGER");
     } catch {}
+    try {
+      d.exec("ALTER TABLE oauth_tokens ADD COLUMN last_error TEXT");
+    } catch {}
+    try {
+      d.exec("ALTER TABLE oauth_tokens ADD COLUMN last_error_at INTEGER");
+    } catch {}
     return d;
   })());

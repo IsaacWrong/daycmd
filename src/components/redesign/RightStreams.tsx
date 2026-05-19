@@ -16,13 +16,82 @@ import { parseEventTime } from "@/components/calendar/dates";
 import { RUN_SKILL_EVENT } from "./useAgent";
 import { SKILLS } from "@/lib/skills-defs";
 
+type GoogleStatusFields = {
+  configured: boolean;
+  connected: boolean;
+  needsReauth?: boolean;
+  lastError?: string | null;
+};
+
 type CalResp =
-  | { events: CalEvent[]; configured: boolean; connected: boolean }
-  | { error: string; configured: boolean; connected: boolean };
+  | ({ events: CalEvent[] } & GoogleStatusFields)
+  | ({ error: string } & GoogleStatusFields);
 
 type GmailResp =
-  | { messages: GmailMsg[]; configured: boolean; connected: boolean }
-  | { error: string; configured: boolean; connected: boolean };
+  | ({ messages: GmailMsg[] } & GoogleStatusFields)
+  | ({ error: string } & GoogleStatusFields);
+
+function ReauthBanner({ data }: { data: GoogleStatusFields | undefined }) {
+  if (!data) return null;
+  if (data.needsReauth) {
+    return (
+      <div
+        className="t-mono"
+        style={{
+          fontSize: 11,
+          color: "var(--c-error)",
+          padding: "8px 10px",
+          border: "1px dashed var(--c-error)",
+          borderRadius: 4,
+          marginBottom: 8,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
+        <span>
+          Google reauth required
+          {data.lastError ? ` · ${data.lastError}` : ""}
+        </span>
+        <a
+          href="/api/auth/google"
+          style={{ color: "var(--c-agent)", whiteSpace: "nowrap" }}
+        >
+          reconnect →
+        </a>
+      </div>
+    );
+  }
+  if (data.configured && !data.connected) {
+    return (
+      <div
+        className="t-mono"
+        style={{
+          fontSize: 11,
+          color: "var(--fg-soft)",
+          padding: "8px 10px",
+          border: "1px dashed var(--rule)",
+          borderRadius: 4,
+          marginBottom: 8,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
+        <span>Google not connected</span>
+        <a
+          href="/api/auth/google"
+          style={{ color: "var(--c-agent)", whiteSpace: "nowrap" }}
+        >
+          connect →
+        </a>
+      </div>
+    );
+  }
+  return null;
+}
 
 type GhResp = GhSummary | { error: string };
 
@@ -249,6 +318,7 @@ function CalendarRow({ e }: { e: CalEvent }) {
 export function CalendarSection() {
   const { data } = usePoll<CalResp>("/api/calendar", 60_000);
   const events = data && "events" in data ? data.events : [];
+  const showBanner = !!data && (data.needsReauth || (data.configured && !data.connected));
   const upcoming = events.filter((e) => parseEventTime(e.end) > Date.now());
 
   const grouped: Record<Bucket, CalEvent[]> = { today: [], tomorrow: [], later: [] };
@@ -275,6 +345,7 @@ export function CalendarSection() {
 
   return (
     <SectionMini title="Calendar" count={totalCount} accent="calendar">
+      {showBanner && <ReauthBanner data={data} />}
       {BUCKET_ORDER.map((b) => {
         const items = visible[b];
         if (items.length === 0) return null;
@@ -308,7 +379,7 @@ export function CalendarSection() {
           </div>
         );
       })}
-      {upcoming.length === 0 && (
+      {upcoming.length === 0 && !showBanner && (
         <p className="text-[12px] text-fg-soft py-1">Calendar clear. Time is yours.</p>
       )}
     </SectionMini>
@@ -322,6 +393,7 @@ export function InboxSection() {
   const { data } = usePoll<GmailResp>("/api/gmail", 60_000);
   const messages = data && "messages" in data ? data.messages : [];
   const unread = messages.filter((m) => m.unread).length;
+  const showBanner = !!data && (data.needsReauth || (data.configured && !data.connected));
 
   const [synopsisOn, setSynopsisOn] = useState(false);
   const [synopsisMap, setSynopsisMap] = useState<Record<string, string>>({});
@@ -454,6 +526,7 @@ export function InboxSection() {
   );
   return (
     <SectionMini title="Inbox" count={unread} accent="gmail" right={headerActions}>
+      {showBanner && <ReauthBanner data={data} />}
       {messages.slice(0, 5).map((m) => {
         const synop = synopsisOn ? synopsisMap[m.id] : undefined;
         return (
@@ -524,7 +597,7 @@ export function InboxSection() {
           </button>
         );
       })}
-      {messages.length === 0 && (
+      {messages.length === 0 && !showBanner && (
         <p className="text-[12px] text-fg-soft py-1">Inbox at zero. Rare. Enjoy it.</p>
       )}
     </SectionMini>

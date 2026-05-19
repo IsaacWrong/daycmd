@@ -23,15 +23,32 @@ type StoredToken = {
   refresh_token: string | null;
   expires_at: number | null;
   scope: string | null;
+  last_error: string | null;
+  last_error_at: number | null;
 };
 
 function loadToken(): StoredToken | null {
   const row = db
     .prepare(
-      "SELECT access_token, refresh_token, expires_at, scope FROM oauth_tokens WHERE provider = ?",
+      "SELECT access_token, refresh_token, expires_at, scope, last_error, last_error_at FROM oauth_tokens WHERE provider = ?",
     )
     .get("google") as StoredToken | undefined;
   return row ?? null;
+}
+
+const REAUTH_ERROR_PATTERN =
+  /invalid_grant|invalid_token|invalid_client|invalid_rapt|unauthorized_client|token has been expired or revoked|bad request/i;
+
+export function recordError(message: string): void {
+  db.prepare(
+    "UPDATE oauth_tokens SET last_error = ?, last_error_at = ? WHERE provider = ?",
+  ).run(message.slice(0, 500), Date.now(), "google");
+}
+
+export function clearError(): void {
+  db.prepare(
+    "UPDATE oauth_tokens SET last_error = NULL, last_error_at = NULL WHERE provider = ? AND last_error IS NOT NULL",
+  ).run("google");
 }
 
 function saveToken(t: {
@@ -108,6 +125,8 @@ export async function getClient(): Promise<OAuth2Client | null> {
         expiry_date: t.expiry_date ?? null,
         scope: t.scope ?? null,
       });
+      // A fresh refresh means whatever was failing is no longer failing.
+      clearError();
     }
   });
   return c;
@@ -117,9 +136,23 @@ export function disconnect(): void {
   db.prepare("DELETE FROM oauth_tokens WHERE provider = ?").run("google");
 }
 
-export function status(): {
+export type GoogleStatus = {
   configured: boolean;
   connected: boolean;
-} {
-  return { configured: googleConfigured(), connected: !!loadToken() };
+  needsReauth: boolean;
+  lastError: string | null;
+  lastErrorAt: number | null;
+};
+
+export function status(): GoogleStatus {
+  const t = loadToken();
+  const lastError = t?.last_error ?? null;
+  const needsReauth = !!lastError && REAUTH_ERROR_PATTERN.test(lastError);
+  return {
+    configured: googleConfigured(),
+    connected: !!t,
+    needsReauth,
+    lastError,
+    lastErrorAt: t?.last_error_at ?? null,
+  };
 }
