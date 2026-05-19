@@ -1,0 +1,4 @@
+# Every PR auto-requests review from @IsaacWrong. Combined with the
+# branch protection rule on `main` (require approval from Code Owners),
+# this prevents direct pushes / unreviewed merges.
+*       @IsaacWrong
