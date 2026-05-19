@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFocusMode, useTod, TodFrame } from "@/components/redesign/TodFrame";
 import { Masthead } from "@/components/redesign/Masthead";
@@ -31,6 +31,10 @@ import { CalendarOverlayProvider } from "@/components/calendar/CalendarOverlayPr
 import { MailOverlayProvider } from "@/components/mail/MailOverlayProvider";
 
 const SECTION_LS = "daycmd.dashboard.section";
+const NAV_W_LS = "daycmd.dashboard.navWidth";
+const NAV_MIN = 180;
+const NAV_MAX = 480;
+const NAV_DEFAULT = 260;
 const VALID = new Set<SectionKey>(SECTIONS.map((s) => s.key));
 
 function SectionView({
@@ -84,6 +88,8 @@ export default function Home() {
     return () => clearTimeout(t);
   }, [agentOpen]);
   const [section, setSection] = useState<SectionKey>("overview");
+  const [navWidth, setNavWidth] = useState<number>(NAV_DEFAULT);
+  const [dragging, setDragging] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -92,8 +98,49 @@ export default function Home() {
       if (stored && VALID.has(stored as SectionKey)) {
         setSection(stored as SectionKey);
       }
+      const w = Number(localStorage.getItem(NAV_W_LS));
+      if (Number.isFinite(w) && w >= NAV_MIN && w <= NAV_MAX) {
+        setNavWidth(w);
+      }
     } catch {}
   }, []);
+
+  const startResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = navWidth;
+    let armed = false;
+    let lastW = startW;
+    const THRESHOLD = 3;
+
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      if (!armed) {
+        if (Math.abs(dx) < THRESHOLD) return;
+        armed = true;
+        setDragging(true);
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+      }
+      lastW = Math.min(NAV_MAX, Math.max(NAV_MIN, startW + dx));
+      setNavWidth(lastW);
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      setDragging(false);
+      if (armed) {
+        try { localStorage.setItem(NAV_W_LS, String(lastW)); } catch {}
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }, [navWidth]);
 
   function selectSection(k: SectionKey) {
     setSection(k);
@@ -125,7 +172,7 @@ export default function Home() {
         className="grid"
         style={{
           flex: 1,
-          gridTemplateColumns: "minmax(220px, 1fr) 4fr",
+          gridTemplateColumns: `${navWidth}px 1fr`,
           gap: 40,
           padding: "20px 56px 140px",
           minHeight: 0,
@@ -134,12 +181,33 @@ export default function Home() {
         <aside
           className="scroll dimmable"
           style={{
+            position: "relative",
             overflowY: "auto",
+            overflowX: "hidden",
+            minWidth: 0,
             paddingRight: 16,
             borderRight: "1px solid var(--rule)",
           }}
         >
           <DashboardNav selected={section} onSelect={selectSection} />
+          <div
+            className="nav-resizer"
+            data-dragging={dragging ? "true" : "false"}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+            onPointerDown={startResize}
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              right: -4,
+              width: 8,
+              cursor: "col-resize",
+              touchAction: "none",
+              zIndex: 5,
+            }}
+          />
         </aside>
 
         <div

@@ -808,6 +808,23 @@ button { font-family: inherit; }
   transform-origin: center;
 }
 
+/* ── Sidebar resizer ─────────────────────────────────────────────── */
+.nav-resizer {
+  position: relative;
+}
+.nav-resizer::after {
+  content: "";
+  position: absolute;
+  inset: 0 3px;
+  border-radius: 999px;
+  background: transparent;
+  transition: background 160ms ease;
+}
+.nav-resizer:hover::after,
+.nav-resizer:active::after {
+  background: oklch(from var(--c-agent) l c h / 0.55);
+}
+
 /* ── Hero stat reveal ────────────────────────────────────────────── */
 @keyframes stat-rise {
   from { opacity: 0; transform: translateY(14px); }

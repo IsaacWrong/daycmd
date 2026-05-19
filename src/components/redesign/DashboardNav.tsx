@@ -147,7 +147,18 @@ export function DashboardNav({
                 opacity: active ? 1 : 0.55,
               }}
             />
-            <span style={{ fontWeight: active ? 500 : 400 }}>{s.label}</span>
+            <span
+              style={{
+                fontWeight: active ? 500 : 400,
+                flex: 1,
+                minWidth: 0,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {s.label}
+            </span>
             {s.key !== "overview" && (
               <span
                 className="t-mono t-num ml-auto"
