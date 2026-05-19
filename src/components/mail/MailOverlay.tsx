@@ -15,7 +15,6 @@ import { ThreadList } from "./ThreadList";
 import { ThreadView } from "./ThreadView";
 import { DraftsList } from "./DraftsList";
 import { ComposeView } from "./ComposeView";
-import { TriagePanel } from "./TriagePanel";
 
 type Props = {
   open: boolean;
@@ -57,7 +56,6 @@ export function MailOverlay({ open, onClose, initialThreadId }: Props) {
     }
   }, [open, initialThreadId]);
 
-  const [triageOpen, setTriageOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
 
   const activeLabelId = view.kind === "label" ? view.labelId : null;
@@ -352,17 +350,6 @@ export function MailOverlay({ open, onClose, initialThreadId }: Props) {
           )}
 
           <span className="flex-1" />
-
-          <button
-            onClick={() => setTriageOpen(true)}
-            className="cal-pill"
-            data-active={triageOpen}
-            title="AI Triage"
-            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-          >
-            <span style={{ fontSize: 13, lineHeight: 1, color: "var(--c-agent)" }}>✦</span>
-            Triage
-          </button>
         </header>
 
         <div className="flex-1 min-h-0 flex">
@@ -410,11 +397,7 @@ export function MailOverlay({ open, onClose, initialThreadId }: Props) {
             )}
           </div>
           <div className="flex-1 min-h-0 flex flex-col">
-            {triageOpen && (
-              <TriagePanel onClose={() => setTriageOpen(false)} />
-            )}
-            {!triageOpen &&
-              (view.kind === "inbox" || view.kind === "label" || view.kind === "search") &&
+            {(view.kind === "inbox" || view.kind === "label" || view.kind === "search") &&
               view.threadId && (
                 <ThreadView
                   threadId={view.threadId}
@@ -429,8 +412,7 @@ export function MailOverlay({ open, onClose, initialThreadId }: Props) {
                   }}
                 />
               )}
-            {!triageOpen &&
-              (view.kind === "inbox" || view.kind === "label" || view.kind === "search") &&
+            {(view.kind === "inbox" || view.kind === "label" || view.kind === "search") &&
               !view.threadId && (
                 <div className="flex-1 flex items-center justify-center text-fg-soft text-[13px]">
                   {view.kind === "search"
@@ -438,7 +420,7 @@ export function MailOverlay({ open, onClose, initialThreadId }: Props) {
                     : "Select a thread."}
                 </div>
               )}
-            {!triageOpen && view.kind === "drafts" && view.draftId && (
+            {view.kind === "drafts" && view.draftId && (
               <ComposeView
                 key={view.draftId}
                 draftId={view.draftId}
@@ -446,12 +428,12 @@ export function MailOverlay({ open, onClose, initialThreadId }: Props) {
                 onSent={() => setView({ kind: "inbox", threadId: null })}
               />
             )}
-            {!triageOpen && view.kind === "drafts" && !view.draftId && (
+            {view.kind === "drafts" && !view.draftId && (
               <div className="flex-1 flex items-center justify-center text-fg-soft text-[13px]">
                 Select a draft.
               </div>
             )}
-            {!triageOpen && view.kind === "compose" && (
+            {view.kind === "compose" && (
               <ComposeView
                 key={view.draftId ?? "new"}
                 draftId={view.draftId}

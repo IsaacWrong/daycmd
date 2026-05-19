@@ -3,12 +3,22 @@
 import { useEffect, useRef, useState } from "react";
 import type { SkillDef } from "@/lib/skills-defs";
 import { migrateKey, migratePrefix } from "@/lib/ls-migrate";
+import { mutate } from "@/lib/hooks";
 import {
   fetchState,
   putState,
   putStateDebounced,
   deleteRemoteState,
 } from "@/lib/vault-state-client";
+
+function invalidateForTool(toolName: string): void {
+  if (/^gmail_/i.test(toolName)) {
+    mutate("/api/gmail");
+    mutate("gmail:threads:inbox");
+    mutate("gmail:labels");
+    mutate("gmail:drafts");
+  }
+}
 
 export const CATEGORY_LS_KEY = "daycmd.agent.category";
 export const RUN_SKILL_EVENT = "daycmd:run-skill";
@@ -267,6 +277,7 @@ export function useAgent(initialCategory?: string) {
               copy[copy.length - 1] = { ...last, tools };
               return copy;
             });
+            invalidateForTool(d.name);
           } else if (ev.type === "container") {
             const id = String(ev.data);
             containerCache.current.set(useCategory, id);

@@ -11,7 +11,7 @@ export async function GET() {
   if (!s.connected)
     return NextResponse.json({ error: "not connected", ...s }, { status: 200 });
   try {
-    const inbox = await getInbox({ max: 10 });
+    const inbox = await getInbox({ max: 50 });
     return NextResponse.json({ messages: inbox.messages, ...s });
   } catch (e) {
     return NextResponse.json(
