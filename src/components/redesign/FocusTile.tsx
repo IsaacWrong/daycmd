@@ -166,8 +166,27 @@ export function FocusTile({ defaultProject = "Daycmd" }: { defaultProject?: stri
 
   useEffect(() => {
     if (!state) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
+    let id: ReturnType<typeof setInterval> | null = null;
+    const start = () => {
+      if (id != null) return;
+      setNow(Date.now());
+      id = setInterval(() => setNow(Date.now()), 1000);
+    };
+    const stop = () => {
+      if (id == null) return;
+      clearInterval(id);
+      id = null;
+    };
+    const sync = () => {
+      if (document.visibilityState === "visible") start();
+      else stop();
+    };
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      document.removeEventListener("visibilitychange", sync);
+      stop();
+    };
   }, [state]);
 
   useEffect(() => {
