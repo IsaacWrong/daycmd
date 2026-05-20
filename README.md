@@ -95,6 +95,7 @@ Lint findings flow into the Errors section + mirror to `Errors/{date}.md` in the
 Daycmd's agent has tools that **write to your Obsidian vault, send / archive Gmail, and create Google Calendar events**. Before pointing it at a real vault or live accounts:
 
 - **Back up your vault.** Use Obsidian Sync, git, or Time Machine. The agent edits files (creates tasks, appends to the daily note, writes KB pages, marks tasks done). Mistakes happen.
+- **Files the agent overwrites or deletes are first copied to `.daycmd/trash/` in your vault; sweeps after 14 days.** Daycmd writes atomically (tmp + rename) and keeps the prior version of any clobbered or deleted file in `<VAULT_PATH>/.daycmd/trash/<ISO>-<name>` so you have a recovery window. This is a backstop, not a replacement for the Obsidian Sync / git / Time Machine backup above.
 - **Set a budget cap in `/settings` before the first long-running skill.** Daily cap defaults to `$0` (unlimited). Forgetting to set one and running a few `Triage Inbox` skills in a row could cost real money.
 - **Try the bundled sample vault first.** Point `VAULT_PATH` at [`examples/sample-vault/`](examples/sample-vault/) to kick the tires — no risk to your real notes.
 - **Connect Google / GitHub *last*.** They unlock send-email and write-calendar tools; until you connect them, every feed degrades gracefully.
