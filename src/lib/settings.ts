@@ -16,6 +16,10 @@ export type AppSettings = {
   defaultCategory: string;
   defaultChatModel: string; // model used when no skill is selected
   skillOverrides: Record<string, SkillOverride>;
+  // When true, destructive agent tools (gmail_send, gmail_unsubscribe,
+  // gmail_trash, calendar_*, kb_wiki_delete) emit a tool_pending event and
+  // wait for explicit user approval before dispatching. Defaults to true.
+  confirmDestructiveTools: boolean;
 };
 
 export type DiscordSettings = {
@@ -31,6 +35,7 @@ const DEFAULTS: AppSettings = {
   defaultCategory: "Personal",
   defaultChatModel: "claude-sonnet-4-6",
   skillOverrides: {},
+  confirmDestructiveTools: true,
 };
 
 const VALID_EFFORTS: ReadonlySet<Effort> = new Set([
@@ -78,6 +83,7 @@ type StoredSettings = {
   defaultCategory?: string;
   defaultChatModel?: string;
   skillOverrides?: Record<string, SkillOverride>;
+  confirmDestructiveTools?: boolean;
   discord?: {
     watchedChannelIds?: string[];
     defaultChannelId?: string;
@@ -199,6 +205,10 @@ export function getSettings(): AppSettings {
         ? storedChatModel
         : DEFAULTS.defaultChatModel,
     skillOverrides: s.skillOverrides ?? DEFAULTS.skillOverrides,
+    confirmDestructiveTools:
+      typeof s.confirmDestructiveTools === "boolean"
+        ? s.confirmDestructiveTools
+        : DEFAULTS.confirmDestructiveTools,
   };
 }
 
@@ -215,6 +225,9 @@ export function updateSettings(patch: Partial<AppSettings>): AppSettings {
     }
     if (patch.skillOverrides !== undefined) {
       next.skillOverrides = sanitizeOverrides(patch.skillOverrides);
+    }
+    if (patch.confirmDestructiveTools !== undefined) {
+      next.confirmDestructiveTools = Boolean(patch.confirmDestructiveTools);
     }
     return next;
   });

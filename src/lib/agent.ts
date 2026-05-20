@@ -1,6 +1,14 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { randomUUID } from "node:crypto";
 import { env } from "./config";
-import { tools, runTool, validateToolInput } from "./agent-tools";
+import {
+  tools,
+  runTool,
+  validateToolInput,
+  requiresConfirmation,
+  awaitConfirmation,
+} from "./agent-tools";
+import { isAllowedRecipient, recordAllowedRecipient } from "./db";
 import { recordUsage, getTodaySpendUsd, costFromUsage } from "./usage";
 import { writeRawAgentRun } from "./kb";
 import { getSettings } from "./settings";
@@ -416,7 +424,60 @@ export async function* streamAgent(
       }
       const validatedInput = validation.input;
 
-      // Step 2: dispatch the validated tool.
+      // Step 2: if the tool is destructive AND the user hasn't disabled the
+      // confirmation gate, pause and wait for explicit approval. We do this
+      // BEFORE the dispatcher so the side effect literally cannot fire on
+      // denial. Always re-fetch settings here — a long-running stream
+      // shouldn't pin the value sampled at entry.
+      const confirmGate = getSettings().confirmDestructiveTools;
+      if (requiresConfirmation(tu.name) && confirmGate) {
+        const nonce = randomUUID();
+        const previouslyApproved =
+          tu.name === "gmail_send" && typeof validatedInput.to === "string"
+            ? isAllowedRecipient(String(validatedInput.to))
+            : false;
+        yield {
+          type: "tool_pending",
+          data: {
+            name: tu.name,
+            nonce,
+            input: validatedInput,
+            previouslyApproved,
+          },
+        };
+        const approved = await awaitConfirmation(nonce);
+        if (!approved) {
+          const idx = toolsUsed.findIndex(
+            (t) => t.name === tu.name && t.ok === undefined,
+          );
+          if (idx >= 0) toolsUsed[idx] = { name: tu.name, ok: false };
+          yield {
+            type: "tool_result",
+            data: { name: tu.name, ok: false },
+          };
+          results.push({
+            type: "tool_result",
+            tool_use_id: tu.id,
+            content: "ToolDenied: user denied or did not approve in time",
+            is_error: true,
+          });
+          continue;
+        }
+        // On approval for gmail_send, persist the recipient so subsequent
+        // sends to the same address can show "previously approved".
+        if (tu.name === "gmail_send" && typeof validatedInput.to === "string") {
+          try {
+            recordAllowedRecipient(String(validatedInput.to));
+          } catch (e) {
+            console.error(
+              "[agent] failed to record allowed recipient:",
+              (e as Error).message,
+            );
+          }
+        }
+      }
+
+      // Step 3: dispatch the (validated, approved-if-needed) tool.
       const out = await runTool(
         tu.name,
         validatedInput as Record<string, unknown>,

@@ -11,6 +11,7 @@ import { fileToAttachment } from "./agent-bar/attachments";
 import { ThreadView } from "./agent-bar/ThreadView";
 import { SkillStrip } from "./agent-bar/SkillStrip";
 import { Bubble } from "./agent-bar/Bubble";
+import { ToolConfirmation } from "./agent-bar/ToolConfirmation";
 
 export { SkillStrip } from "./agent-bar/SkillStrip";
 
@@ -356,9 +357,17 @@ export function AgentBar({
     inputRef.current?.focus();
   }
 
+  const toolConfirmationModal = agent.pendingTool ? (
+    <ToolConfirmation
+      pending={agent.pendingTool}
+      onDecision={(approved) => agent.confirmTool(approved)}
+    />
+  ) : null;
+
   if (variant === "workspace") {
     return (
       <div className="flex flex-col flex-1 min-h-0">
+        {toolConfirmationModal}
         <ThreadView messages={agent.messages} busy={agent.busy} />
         {agent.error && (
           <p className="text-[12px] mt-2" style={{ color: "var(--c-error)" }}>
@@ -473,6 +482,7 @@ export function AgentBar({
   return (
     <>
       {hiddenFileInput}
+      {toolConfirmationModal}
       {backdrop}
       <div
         ref={barWrapRef}

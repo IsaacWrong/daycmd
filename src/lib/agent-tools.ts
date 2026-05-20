@@ -668,6 +668,69 @@ export function validateToolInput(name: string, raw: unknown): ValidatedInput {
   return { ok: true, input: parsed.data as ToolInput };
 }
 
+// Tools that fire visible / hard-to-reverse side effects. The agent loop
+// pauses on these and waits for explicit user approval via /api/agent/confirm
+// before dispatching. `task_done` is intentionally OFF — it's reversible from
+// the vault side. `gmail_send` requires recipient-allowlist tracking on top.
+export const DESTRUCTIVE_TOOLS: ReadonlySet<string> = new Set([
+  "gmail_send",
+  "gmail_unsubscribe",
+  "gmail_trash",
+  "calendar_create_event",
+  "calendar_reschedule_event",
+  "calendar_cancel_event",
+  "kb_wiki_delete",
+]);
+
+export function requiresConfirmation(name: string): boolean {
+  return DESTRUCTIVE_TOOLS.has(name);
+}
+
+// ─── Per-tool confirmation pending map ────────────────────────────────────
+//
+// When the agent loop hits a destructive tool it generates a nonce, parks a
+// Promise here keyed by nonce, and emits a `tool_pending` SSE event. The
+// client posts an approve/deny decision to /api/agent/confirm which resolves
+// the Promise. A 60s timeout auto-rejects.
+
+type PendingEntry = {
+  resolve: (approved: boolean) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
+declare global {
+  // Survive Next.js dev-mode module reloads — without this, the route handler
+  // and the agent loop would each see their own Map after HMR.
+  var __daycmd_pending_confirms: Map<string, PendingEntry> | undefined;
+}
+
+const pending: Map<string, PendingEntry> =
+  globalThis.__daycmd_pending_confirms ??
+  (globalThis.__daycmd_pending_confirms = new Map());
+
+const CONFIRM_TIMEOUT_MS = 60_000;
+
+export function awaitConfirmation(nonce: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      const entry = pending.get(nonce);
+      if (!entry) return;
+      pending.delete(nonce);
+      resolve(false);
+    }, CONFIRM_TIMEOUT_MS);
+    pending.set(nonce, { resolve, timer });
+  });
+}
+
+export function resolveConfirmation(nonce: string, approved: boolean): boolean {
+  const entry = pending.get(nonce);
+  if (!entry) return false;
+  pending.delete(nonce);
+  clearTimeout(entry.timer);
+  entry.resolve(approved);
+  return true;
+}
+
 async function appendToSection(
   section: string,
   content: string,

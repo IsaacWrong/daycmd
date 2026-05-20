@@ -19,6 +19,7 @@ type Settings = {
   defaultCategory: string;
   defaultChatModel: string;
   skillOverrides: Record<string, SkillOverride>;
+  confirmDestructiveTools: boolean;
 };
 
 const EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"];
@@ -370,6 +371,25 @@ export default function SettingsPage() {
                     </option>
                   ))}
                 </select>
+              </Field>
+              <Field
+                label="Confirm destructive tools"
+                hint="recommended"
+              >
+                <label
+                  className="inline-flex items-center gap-2"
+                  style={{ fontSize: 13, color: "var(--fg)", cursor: "pointer" }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={settings.confirmDestructiveTools}
+                    onChange={(e) =>
+                      save({ confirmDestructiveTools: e.target.checked })
+                    }
+                  />
+                  Always require approval for sends, deletes, and calendar
+                  writes
+                </label>
               </Field>
             </Section>
 

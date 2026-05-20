@@ -38,6 +38,13 @@ export type Msg = {
   endedAt?: number;
 };
 
+export type PendingTool = {
+  name: string;
+  nonce: string;
+  input: Record<string, unknown>;
+  previouslyApproved?: boolean;
+};
+
 const MESSAGES_LS_KEY = (cat: string) => `daycmd.agent.messages.${cat}`;
 const CONTAINER_LS_KEY = (cat: string) => `daycmd.agent.container.${cat}`;
 
@@ -88,6 +95,7 @@ export function useAgent(initialCategory?: string) {
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingTool, setPendingTool] = useState<PendingTool | null>(null);
   const [categories, setCategories] = useState<string[]>([initialCategory ?? "Personal"]);
   const [category, setCategoryState] = useState(initialCategory ?? "Personal");
   const [hydrated, setHydrated] = useState(false);
@@ -264,8 +272,18 @@ export function useAgent(initialCategory?: string) {
               };
               return copy;
             });
+          } else if (ev.type === "tool_pending") {
+            // Server is parked waiting for the user's approve/deny — surface
+            // a modal. The matching tool_result event clears the modal.
+            const d = ev.data as PendingTool;
+            setPendingTool(d);
           } else if (ev.type === "tool_result") {
             const d = ev.data as { name: string; ok: boolean };
+            // Clear pending modal if this result matches the awaiting nonce
+            // (server resolved before the user clicked — e.g. timeout, or
+            // approved + dispatched). Defensive: always clear once a result
+            // for the same tool name arrives.
+            setPendingTool((cur) => (cur && cur.name === d.name ? null : cur));
             setMessages((prev) => {
               if (prev.length === 0) return prev;
               const copy = [...prev];
@@ -363,6 +381,25 @@ export function useAgent(initialCategory?: string) {
     void deleteRemoteState(containerStateKey(category));
   }
 
+  async function confirmTool(approved: boolean) {
+    const cur = pendingTool;
+    if (!cur) return;
+    // Optimistically clear so the modal disappears immediately; the matching
+    // tool_result event will follow once the server resumes the dispatcher.
+    setPendingTool(null);
+    try {
+      await apiFetch("/api/agent/confirm", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ nonce: cur.nonce, approved }),
+      });
+    } catch (e) {
+      // If POST failed the server will hit its 60s timeout and treat it as
+      // denial — surface the error so the user knows something went wrong.
+      setError((e as Error).message);
+    }
+  }
+
   return {
     messages,
     busy,
@@ -375,5 +412,7 @@ export function useAgent(initialCategory?: string) {
     stop,
     clear,
     hydrated,
+    pendingTool,
+    confirmTool,
   };
 }

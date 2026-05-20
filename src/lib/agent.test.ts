@@ -31,19 +31,33 @@ type ValidatedInput =
 const validateToolInput = vi.fn<(name: string, raw: unknown) => ValidatedInput>(
   (_n, raw) => ({ ok: true, input: (raw as Record<string, unknown>) ?? {} }),
 );
+const requiresConfirmation = vi.fn<(name: string) => boolean>(() => false);
+const awaitConfirmation = vi.fn<(nonce: string) => Promise<boolean>>(async () =>
+  true,
+);
 vi.mock("./agent-tools", () => ({
   tools: [],
   runTool: (...args: unknown[]) => runTool(...(args as Parameters<typeof runTool>)),
   validateToolInput: (name: string, raw: unknown) => validateToolInput(name, raw),
+  requiresConfirmation: (name: string) => requiresConfirmation(name),
+  awaitConfirmation: (nonce: string) => awaitConfirmation(nonce),
 }));
 
 vi.mock("./kb", () => ({
   writeRawAgentRun: vi.fn(async () => "raw/test.md"),
 }));
 
+const recordAllowedRecipient = vi.fn<(email: string) => void>(() => undefined);
+const isAllowedRecipient = vi.fn<(email: string) => boolean>(() => false);
+vi.mock("./db", () => ({
+  isAllowedRecipient: (e: string) => isAllowedRecipient(e),
+  recordAllowedRecipient: (e: string) => recordAllowedRecipient(e),
+}));
+
 let budgetDailyUsd = 0;
+let confirmDestructiveTools = true;
 vi.mock("./settings", () => ({
-  getSettings: () => ({ budgetDailyUsd }),
+  getSettings: () => ({ budgetDailyUsd, confirmDestructiveTools }),
 }));
 
 vi.mock("./errors", () => ({ logError: vi.fn() }));
@@ -102,8 +116,16 @@ beforeEach(() => {
     ok: true,
     input: (raw as Record<string, unknown>) ?? {},
   }));
+  requiresConfirmation.mockReset();
+  requiresConfirmation.mockReturnValue(false);
+  awaitConfirmation.mockReset();
+  awaitConfirmation.mockResolvedValue(true);
+  isAllowedRecipient.mockReset();
+  isAllowedRecipient.mockReturnValue(false);
+  recordAllowedRecipient.mockReset();
   streamFn.mockReset();
   budgetDailyUsd = 0;
+  confirmDestructiveTools = true;
 });
 
 afterEach(() => {
@@ -291,6 +313,163 @@ describe("streamAgent mid-flight budget cap (issue #26)", () => {
 
     // At least one interim record before the final end_turn record.
     expect(recordUsage.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("streamAgent per-tool confirmation (issue #28)", () => {
+  it("emits tool_pending and waits for approval before dispatching a destructive tool", async () => {
+    requiresConfirmation.mockImplementation((n) => n === "gmail_send");
+    // The approval gate resolves true — dispatch proceeds.
+    awaitConfirmation.mockResolvedValue(true);
+
+    streamFn.mockImplementationOnce(() =>
+      makeStream(
+        [],
+        {
+          stop_reason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              id: "tu_send",
+              name: "gmail_send",
+              input: { to: "x@y.z", subject: "hi", body: "hi" },
+            },
+          ],
+          usage: { input_tokens: 5, output_tokens: 5 },
+        },
+      ),
+    );
+    streamFn.mockImplementationOnce(() =>
+      makeStream([], {
+        stop_reason: "end_turn",
+        content: [],
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }),
+    );
+
+    const events = await collect(
+      streamAgent([{ role: "user", content: "send it" }]),
+    );
+
+    const pending = events.find((e) => e.type === "tool_pending");
+    expect(pending, "should emit tool_pending").toBeDefined();
+    const pdata = pending?.data as { name: string; nonce: string };
+    expect(pdata.name).toBe("gmail_send");
+    expect(pdata.nonce).toMatch(/[0-9a-f-]{36}/);
+
+    // Approval was awaited, then the tool dispatched.
+    expect(awaitConfirmation).toHaveBeenCalledWith(pdata.nonce);
+    expect(runTool).toHaveBeenCalledTimes(1);
+    expect(recordAllowedRecipient).toHaveBeenCalledWith("x@y.z");
+  });
+
+  it("returns ToolDenied without dispatching when the user denies", async () => {
+    requiresConfirmation.mockImplementation((n) => n === "gmail_trash");
+    awaitConfirmation.mockResolvedValue(false);
+
+    streamFn.mockImplementationOnce(() =>
+      makeStream(
+        [],
+        {
+          stop_reason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              id: "tu_trash",
+              name: "gmail_trash",
+              input: { message_id: "abc" },
+            },
+          ],
+          usage: { input_tokens: 5, output_tokens: 5 },
+        },
+      ),
+    );
+    streamFn.mockImplementationOnce(() =>
+      makeStream([], {
+        stop_reason: "end_turn",
+        content: [],
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }),
+    );
+
+    const events = await collect(
+      streamAgent([{ role: "user", content: "delete it" }]),
+    );
+
+    expect(runTool).not.toHaveBeenCalled();
+    const result = events.find(
+      (e) =>
+        e.type === "tool_result" &&
+        (e.data as { name: string }).name === "gmail_trash",
+    );
+    expect(result).toBeDefined();
+    expect((result?.data as { ok: boolean }).ok).toBe(false);
+  });
+
+  it("skips the confirmation gate when settings.confirmDestructiveTools is false", async () => {
+    requiresConfirmation.mockImplementation((n) => n === "gmail_send");
+    confirmDestructiveTools = false;
+
+    streamFn.mockImplementationOnce(() =>
+      makeStream(
+        [],
+        {
+          stop_reason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              id: "tu_send",
+              name: "gmail_send",
+              input: { to: "x@y.z", subject: "hi", body: "hi" },
+            },
+          ],
+          usage: { input_tokens: 5, output_tokens: 5 },
+        },
+      ),
+    );
+    streamFn.mockImplementationOnce(() =>
+      makeStream([], {
+        stop_reason: "end_turn",
+        content: [],
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }),
+    );
+
+    const events = await collect(
+      streamAgent([{ role: "user", content: "send" }]),
+    );
+
+    expect(awaitConfirmation).not.toHaveBeenCalled();
+    expect(events.some((e) => e.type === "tool_pending")).toBe(false);
+    expect(runTool).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("gmail allowed_recipients persistence (issue #28)", () => {
+  // Real (not-mocked) db.ts to verify the table + helpers persist.
+  it("persists approved recipients and reports prior approval on next lookup", async () => {
+    vi.resetModules();
+    // Use a tmp DB so we don't poison the dev one.
+    const os = await vi.importActual<typeof import("node:os")>("node:os");
+    const fs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    const path = await vi.importActual<typeof import("node:path")>("node:path");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "daycmd-db-"));
+    const prevCwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      vi.doUnmock("./db");
+      const dbMod = await import("./db");
+      expect(dbMod.isAllowedRecipient("foo@example.com")).toBe(false);
+      dbMod.recordAllowedRecipient("Foo <foo@example.com>");
+      expect(dbMod.isAllowedRecipient("foo@example.com")).toBe(true);
+      // Normalised — display-name wrapping + casing don't matter.
+      expect(dbMod.isAllowedRecipient("FOO@example.com")).toBe(true);
+    } finally {
+      process.chdir(prevCwd);
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {}
+    }
   });
 });
 

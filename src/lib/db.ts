@@ -136,5 +136,45 @@ export const db =
     try {
       d.exec("ALTER TABLE oauth_tokens ADD COLUMN last_error_at INTEGER");
     } catch {}
+    // Recipients the user has previously approved a gmail_send to — used by
+    // the per-tool confirmation flow to display "previously approved" so the
+    // user can disambiguate first-time sends from repeat sends. Storing
+    // approvals doesn't skip confirmation; the gate still fires every time.
+    d.exec(`
+      CREATE TABLE IF NOT EXISTS gmail_allowed_recipients (
+        email TEXT PRIMARY KEY,
+        first_approved_at INTEGER NOT NULL,
+        last_approved_at INTEGER NOT NULL,
+        approval_count INTEGER NOT NULL DEFAULT 1
+      );
+    `);
     return d;
   })());
+
+function normalizeEmail(addr: string): string {
+  // Strip "Display Name <foo@bar>" → "foo@bar" and lowercase.
+  const m = /<([^>]+)>/.exec(addr);
+  return (m ? m[1] : addr).trim().toLowerCase();
+}
+
+export function isAllowedRecipient(email: string): boolean {
+  const norm = normalizeEmail(email);
+  if (!norm) return false;
+  const row = db
+    .prepare("SELECT email FROM gmail_allowed_recipients WHERE email = ?")
+    .get(norm) as { email: string } | undefined;
+  return !!row;
+}
+
+export function recordAllowedRecipient(email: string): void {
+  const norm = normalizeEmail(email);
+  if (!norm) return;
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO gmail_allowed_recipients (email, first_approved_at, last_approved_at, approval_count)
+     VALUES (?, ?, ?, 1)
+     ON CONFLICT(email) DO UPDATE SET
+       last_approved_at = excluded.last_approved_at,
+       approval_count = approval_count + 1`,
+  ).run(norm, now, now);
+}
