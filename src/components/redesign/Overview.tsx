@@ -7,7 +7,14 @@ import type { GhSummary } from "@/lib/github";
 import type { GmailMsg } from "@/lib/gmail";
 import type { ErrorRow } from "@/lib/errors";
 import type { SectionKey } from "./DashboardNav";
-import { Markdown } from "@/components/Markdown";
+import dynamic from "next/dynamic";
+
+// react-markdown + remark-gfm (~40 KB gzipped) only renders when the
+// morning brief is expanded — defer the chunk until then.
+const Markdown = dynamic(
+  () => import("@/components/Markdown").then((m) => m.Markdown),
+  { ssr: false },
+);
 
 type RankResp = { ranked: Array<{ id: string; reason: string }>; error?: string };
 type BriefResp = { brief: { ts: number; output: string } | null };
