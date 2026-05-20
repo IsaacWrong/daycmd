@@ -41,7 +41,7 @@ The lint baseline is intentionally permissive — several React 19 hook rules (`
 - `src/app/` — Next.js app router. `page.tsx` (home), `projects/[name]/page.tsx`, `settings/page.tsx`, plus `api/` route handlers.
 - `src/components/redesign/` — every UI primitive (`TodFrame`, `Masthead`, `AgentBar`, `FocusTile`, `Section`, `Sparkline`, `Glyph`, etc.). The folder name is historical; treat it as the canonical components dir.
 - `src/lib/` — server-side logic: agent loop, KB compile + lint, Obsidian read/write, GitHub/Gmail/Calendar adapters, SQLite, scheduler.
-- `data/daycmd.db` — local SQLite (gitignored). Auto-bootstraps schema on first run; legacy `ai-os.db` is auto-renamed.
+- `data/secrets.db` — local SQLite (gitignored). Auto-bootstraps schema on first run; legacy `ai-os.db` or `daycmd.db` is auto-renamed.
 - `examples/sample-vault/` — minimal vault for testing without your own Obsidian setup.
 
 ## Patterns to follow
