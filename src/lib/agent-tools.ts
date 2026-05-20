@@ -44,6 +44,25 @@ import { grepWiki, listOutputs } from "./kb";
 import { routeQuickCapture } from "./quick-capture";
 import { recentErrors, resolveError } from "./errors";
 
+// ─── Untrusted-content envelope ──────────────────────────────────────────
+//
+// Externally-sourced text (gmail bodies, fetched web pages, ingested wiki
+// pages, daily-note captures) gets wrapped in this delimiter before it ever
+// concatenates into the agent's API messages. The system prompt instructs the
+// model to treat the contents as data, not instructions — this is the
+// mechanical half of that defence.
+export function wrapUntrusted(content: string, source: string): string {
+  // Best-effort HTML-escape of the source attribute so a hostile id can't
+  // close the tag early. The contents themselves are intentionally NOT
+  // escaped (per the spec — belt-and-suspenders for later).
+  const safeSource = source
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  return `<untrusted_input source="${safeSource}">\n${content}\n</untrusted_input>`;
+}
+
 export const tools: Anthropic.Messages.ToolUnion[] = [
   { type: "web_search_20260209", name: "web_search" },
   { type: "web_fetch_20260209", name: "web_fetch" },
@@ -787,7 +806,10 @@ export async function runTool(
       }
       case "get_daily_note": {
         const note = await readDailyNote();
-        return { ok: true, result: note };
+        // Daily notes are mostly self-authored, but Quick Capture lines may
+        // include pasted email text — wrap to keep the policy uniform.
+        const wrapped = wrapUntrusted(note.content, "vault.daily_note");
+        return { ok: true, result: { ...note, content: wrapped } };
       }
       case "append_to_daily_note": {
         const section = String(input.section ?? "Quick Capture");
@@ -801,7 +823,15 @@ export async function runTool(
       case "read_past_daily_notes": {
         const days = Number(input.days ?? 7);
         const notes = await readPastDailyNotes(days);
-        return { ok: true, result: notes };
+        // Wrap each per-day body so prompt-injection in a quick-capture line
+        // can't masquerade as instructions to the agent.
+        const wrapped = notes.map((n) => ({
+          ...n,
+          content: n.exists
+            ? wrapUntrusted(n.content, `vault.daily_note:${n.date}`)
+            : n.content,
+        }));
+        return { ok: true, result: wrapped };
       }
       case "get_inbox": {
         const max = Number(input.max ?? 10);
@@ -811,7 +841,17 @@ export async function runTool(
       }
       case "gmail_get_message": {
         const detail = await getMessageDetail(String(input.message_id));
-        return { ok: true, result: detail };
+        // Gmail message bodies are the canonical attacker-controlled surface
+        // — anyone can email Isaac. Wrap the body so the model treats it as
+        // data, not instructions.
+        const wrapped: typeof detail & { body: string } = {
+          ...detail,
+          body: wrapUntrusted(
+            detail.body ?? "",
+            `gmail.message:${String(input.message_id)}`,
+          ),
+        };
+        return { ok: true, result: wrapped };
       }
       case "gmail_archive": {
         const { threadId } = await getMessageDetail(String(input.message_id));
@@ -998,7 +1038,16 @@ export async function runTool(
       case "kb_read_wiki_page": {
         const category = String(input.category ?? ctx.category ?? "Personal");
         const content = await readWikiPage(category, String(input.path));
-        return { ok: true, result: { category, path: String(input.path), content } };
+        // Wiki pages are mostly self-authored, but third-party PDFs and
+        // transcripts get ingested. Wrap to keep the policy uniform.
+        const wrapped = wrapUntrusted(
+          content,
+          `kb.wiki:${category}:${String(input.path)}`,
+        );
+        return {
+          ok: true,
+          result: { category, path: String(input.path), content: wrapped },
+        };
       }
       case "kb_wiki_write": {
         const category = String(input.category ?? ctx.category ?? "Personal");
