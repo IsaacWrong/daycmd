@@ -342,7 +342,7 @@ export function FocusTile({ defaultProject = "Daycmd" }: { defaultProject?: stri
                 margin: 0,
                 padding: 4,
                 listStyle: "none",
-                background: "oklch(from var(--bg) l c h / 0.96)",
+                background: "oklch(from var(--bg-a) l c h / 0.96)",
                 backdropFilter: "blur(10px)",
                 border: "1px solid var(--rule)",
                 borderRadius: 8,
