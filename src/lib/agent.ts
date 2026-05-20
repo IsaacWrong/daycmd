@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "./config";
-import { tools, runTool } from "./agent-tools";
+import { tools, runTool, validateToolInput } from "./agent-tools";
 import { recordUsage, getTodaySpendUsd, costFromUsage } from "./usage";
 import { writeRawAgentRun } from "./kb";
 import { getSettings } from "./settings";
@@ -389,9 +389,39 @@ export async function* streamAgent(
         });
         continue;
       }
-      const out = await runTool(tu.name, tu.input as Record<string, unknown>, {
-        category,
-      });
+      // Step 1: zod-validate the input before we let it anywhere near the
+      // dispatcher. Garbage in → structured ToolInputError so the model can
+      // correct and retry, rather than the dispatcher coercing nonsense via
+      // String(...).
+      const validation = validateToolInput(
+        tu.name,
+        tu.input as Record<string, unknown>,
+      );
+      if (!validation.ok) {
+        const idx = toolsUsed.findIndex(
+          (t) => t.name === tu.name && t.ok === undefined,
+        );
+        if (idx >= 0) toolsUsed[idx] = { name: tu.name, ok: false };
+        yield {
+          type: "tool_result",
+          data: { name: tu.name, ok: false },
+        };
+        results.push({
+          type: "tool_result",
+          tool_use_id: tu.id,
+          content: `ToolInputError: ${validation.error}`,
+          is_error: true,
+        });
+        continue;
+      }
+      const validatedInput = validation.input;
+
+      // Step 2: dispatch the validated tool.
+      const out = await runTool(
+        tu.name,
+        validatedInput as Record<string, unknown>,
+        { category },
+      );
       const payload = out.ok ? out.result : { error: out.error };
       const idx = toolsUsed.findIndex(
         (t) => t.name === tu.name && t.ok === undefined,

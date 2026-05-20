@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { z } from "zod";
 import { format, subDays } from "date-fns";
 import { env } from "./config";
 import { getAllTasks, readDailyNote, writeDailyNote, dailyNotePath } from "./obsidian";
@@ -515,6 +516,157 @@ export const tools: Anthropic.Messages.ToolUnion[] = [
 ];
 
 type ToolInput = Record<string, unknown>;
+
+// ─── Per-tool input schemas + metadata ───────────────────────────────────
+//
+// Every dispatch goes through `validateToolInput` first. The schema below
+// mirrors each tool's input_schema declared in the `tools` array — keep them
+// in sync. On failure the dispatcher returns a structured ToolInputError to
+// the model so it can correct and retry, rather than the dispatcher coercing
+// garbage via `String(...)`.
+
+const EmptyObj = z.object({}).passthrough();
+
+const ToolSchemas = {
+  get_tasks: EmptyObj,
+  get_daily_note: EmptyObj,
+  append_to_daily_note: z.object({
+    section: z.string().min(1),
+    content: z.string().min(1),
+  }),
+  read_past_daily_notes: z.object({
+    days: z.number().int().min(1).max(14),
+  }),
+  get_inbox: z.object({
+    max: z.number().int().min(1).max(50).optional(),
+    query: z.string().optional(),
+  }),
+  gmail_get_message: z.object({ message_id: z.string().min(1) }),
+  gmail_archive: z.object({ message_id: z.string().min(1) }),
+  gmail_mark_read: z.object({ message_id: z.string().min(1) }),
+  gmail_mark_unread: z.object({ message_id: z.string().min(1) }),
+  gmail_star: z.object({ message_id: z.string().min(1) }),
+  gmail_unstar: z.object({ message_id: z.string().min(1) }),
+  gmail_trash: z.object({ message_id: z.string().min(1) }),
+  gmail_create_draft: z.object({
+    to: z.string().min(1),
+    subject: z.string(),
+    body: z.string(),
+  }),
+  gmail_draft_reply: z.object({
+    thread_id: z.string().min(1),
+    body: z.string().min(1),
+  }),
+  gmail_unsubscribe: z.object({ message_id: z.string().min(1) }),
+  gmail_send: z.object({
+    to: z.string().min(1),
+    subject: z.string(),
+    body: z.string(),
+  }),
+  gmail_list_labels: EmptyObj,
+  gmail_label_thread: z.object({
+    thread_id: z.string().min(1),
+    add: z.array(z.string()).optional(),
+    remove: z.array(z.string()).optional(),
+  }),
+  get_calendar: z.object({
+    hours_ahead: z.number().int().min(1).max(24 * 30).optional(),
+  }),
+  get_github_summary: EmptyObj,
+  calendar_create_event: z.object({
+    summary: z.string().min(1),
+    start: z.string().min(1),
+    end: z.string().min(1),
+    description: z.string().optional(),
+    location: z.string().optional(),
+    attendees: z.array(z.string()).optional(),
+  }),
+  calendar_reschedule_event: z.object({
+    event_id: z.string().min(1),
+    start: z.string().min(1),
+    end: z.string().min(1),
+  }),
+  calendar_cancel_event: z.object({ event_id: z.string().min(1) }),
+  task_create: z.object({
+    text: z.string().min(1),
+    file: z.string().optional(),
+    due: z.string().optional(),
+    start: z.string().optional(),
+    scheduled: z.string().optional(),
+    priority: z.enum(["highest", "high", "medium", "low", "lowest"]).optional(),
+  }),
+  task_done: z.object({
+    file: z.string().min(1),
+    text: z.string().min(1),
+  }),
+  kb_grep: z.object({
+    category: z.string().optional(),
+    query: z.string().min(1),
+  }),
+  route_quick_capture: EmptyObj,
+  kb_list_outputs: z.object({
+    category: z.string().optional(),
+    limit: z.number().int().min(1).max(200).optional(),
+  }),
+  kb_list_categories: EmptyObj,
+  kb_ingest: z.object({
+    category: z.string().optional(),
+    title: z.string().min(1),
+    content: z.string().min(1),
+    source_url: z.string().optional(),
+    source_type: z.string().optional(),
+  }),
+  kb_query: z.object({ category: z.string().optional() }),
+  kb_read_wiki_page: z.object({
+    category: z.string().optional(),
+    path: z.string().min(1),
+  }),
+  kb_wiki_write: z.object({
+    category: z.string().optional(),
+    path: z.string().min(1),
+    content: z.string(),
+  }),
+  kb_wiki_delete: z.object({
+    category: z.string().optional(),
+    path: z.string().min(1),
+  }),
+  get_errors: z.object({
+    limit: z.number().int().min(1).max(100).optional(),
+    include_resolved: z.boolean().optional(),
+  }),
+  resolve_error: z.object({ id: z.string().min(1) }),
+  kb_write_output: z.object({
+    category: z.string().optional(),
+    title: z.string().min(1),
+    content: z.string().min(1),
+  }),
+} as const satisfies Record<string, z.ZodTypeAny>;
+
+export type ToolName = keyof typeof ToolSchemas;
+
+export type ValidatedInput =
+  | { ok: true; input: ToolInput }
+  | { ok: false; error: string };
+
+export function validateToolInput(name: string, raw: unknown): ValidatedInput {
+  const schema = (ToolSchemas as Record<string, z.ZodTypeAny>)[name];
+  if (!schema) {
+    return { ok: false, error: `unknown tool: ${name}` };
+  }
+  // Tools always receive an object input from the model. Reject non-objects
+  // up front so the friendlier zod error path can assume it's keyed.
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, error: "input must be an object" };
+  }
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const fieldPath = issue?.path?.length ? issue.path.join(".") : "(root)";
+    const msg = issue?.message ?? "invalid";
+    return { ok: false, error: `${fieldPath} ${msg}` };
+  }
+  return { ok: true, input: parsed.data as ToolInput };
+}
 
 async function appendToSection(
   section: string,

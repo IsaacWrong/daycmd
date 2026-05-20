@@ -25,9 +25,16 @@ type ToolResult = { ok: boolean; result?: unknown; error?: string };
 const runTool = vi.fn<(...args: unknown[]) => Promise<ToolResult>>(
   async () => ({ ok: true, result: {} }),
 );
+type ValidatedInput =
+  | { ok: true; input: Record<string, unknown> }
+  | { ok: false; error: string };
+const validateToolInput = vi.fn<(name: string, raw: unknown) => ValidatedInput>(
+  (_n, raw) => ({ ok: true, input: (raw as Record<string, unknown>) ?? {} }),
+);
 vi.mock("./agent-tools", () => ({
   tools: [],
   runTool: (...args: unknown[]) => runTool(...(args as Parameters<typeof runTool>)),
+  validateToolInput: (name: string, raw: unknown) => validateToolInput(name, raw),
 }));
 
 vi.mock("./kb", () => ({
@@ -90,6 +97,11 @@ beforeEach(() => {
   getTodaySpendUsd.mockReturnValue(0);
   runTool.mockReset();
   runTool.mockResolvedValue({ ok: true, result: {} });
+  validateToolInput.mockReset();
+  validateToolInput.mockImplementation((_n, raw) => ({
+    ok: true,
+    input: (raw as Record<string, unknown>) ?? {},
+  }));
   streamFn.mockReset();
   budgetDailyUsd = 0;
 });
@@ -279,5 +291,55 @@ describe("streamAgent mid-flight budget cap (issue #26)", () => {
 
     // At least one interim record before the final end_turn record.
     expect(recordUsage.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("streamAgent tool input validation (issue #27)", () => {
+  it("returns a ToolInputError without dispatching when zod rejects the input", async () => {
+    // Model asks to call a tool with bogus input — validator should bounce it
+    // before runTool ever sees it.
+    validateToolInput.mockImplementationOnce(() => ({
+      ok: false,
+      error: "to must be a string",
+    }));
+
+    streamFn.mockImplementationOnce(() =>
+      makeStream(
+        [],
+        {
+          stop_reason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              id: "tu_bad",
+              name: "gmail_send",
+              input: { to: 42 },
+            },
+          ],
+          usage: { input_tokens: 5, output_tokens: 5 },
+        },
+      ),
+    );
+    // Second iter ends the turn so the loop terminates cleanly.
+    streamFn.mockImplementationOnce(() =>
+      makeStream([], {
+        stop_reason: "end_turn",
+        content: [],
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }),
+    );
+
+    const events = await collect(
+      streamAgent([{ role: "user", content: "hi" }]),
+    );
+
+    expect(runTool).not.toHaveBeenCalled();
+    const result = events.find(
+      (e) =>
+        e.type === "tool_result" &&
+        (e.data as { name: string }).name === "gmail_send",
+    );
+    expect(result).toBeDefined();
+    expect((result?.data as { ok: boolean }).ok).toBe(false);
   });
 });
