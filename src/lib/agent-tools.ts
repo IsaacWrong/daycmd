@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { z } from "zod";
 import { format, subDays } from "date-fns";
 import { env } from "./config";
 import { getAllTasks, readDailyNote, writeDailyNote, dailyNotePath } from "./obsidian";
@@ -42,6 +43,25 @@ import { appendTask, markTaskDone } from "./tasks-writer";
 import { grepWiki, listOutputs } from "./kb";
 import { routeQuickCapture } from "./quick-capture";
 import { recentErrors, resolveError } from "./errors";
+
+// ─── Untrusted-content envelope ──────────────────────────────────────────
+//
+// Externally-sourced text (gmail bodies, fetched web pages, ingested wiki
+// pages, daily-note captures) gets wrapped in this delimiter before it ever
+// concatenates into the agent's API messages. The system prompt instructs the
+// model to treat the contents as data, not instructions — this is the
+// mechanical half of that defence.
+export function wrapUntrusted(content: string, source: string): string {
+  // Best-effort HTML-escape of the source attribute so a hostile id can't
+  // close the tag early. The contents themselves are intentionally NOT
+  // escaped (per the spec — belt-and-suspenders for later).
+  const safeSource = source
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  return `<untrusted_input source="${safeSource}">\n${content}\n</untrusted_input>`;
+}
 
 export const tools: Anthropic.Messages.ToolUnion[] = [
   { type: "web_search_20260209", name: "web_search" },
@@ -516,6 +536,220 @@ export const tools: Anthropic.Messages.ToolUnion[] = [
 
 type ToolInput = Record<string, unknown>;
 
+// ─── Per-tool input schemas + metadata ───────────────────────────────────
+//
+// Every dispatch goes through `validateToolInput` first. The schema below
+// mirrors each tool's input_schema declared in the `tools` array — keep them
+// in sync. On failure the dispatcher returns a structured ToolInputError to
+// the model so it can correct and retry, rather than the dispatcher coercing
+// garbage via `String(...)`.
+
+const EmptyObj = z.object({}).passthrough();
+
+const ToolSchemas = {
+  get_tasks: EmptyObj,
+  get_daily_note: EmptyObj,
+  append_to_daily_note: z.object({
+    section: z.string().min(1),
+    content: z.string().min(1),
+  }),
+  read_past_daily_notes: z.object({
+    days: z.number().int().min(1).max(14),
+  }),
+  get_inbox: z.object({
+    max: z.number().int().min(1).max(50).optional(),
+    query: z.string().optional(),
+  }),
+  gmail_get_message: z.object({ message_id: z.string().min(1) }),
+  gmail_archive: z.object({ message_id: z.string().min(1) }),
+  gmail_mark_read: z.object({ message_id: z.string().min(1) }),
+  gmail_mark_unread: z.object({ message_id: z.string().min(1) }),
+  gmail_star: z.object({ message_id: z.string().min(1) }),
+  gmail_unstar: z.object({ message_id: z.string().min(1) }),
+  gmail_trash: z.object({ message_id: z.string().min(1) }),
+  gmail_create_draft: z.object({
+    to: z.string().min(1),
+    subject: z.string(),
+    body: z.string(),
+  }),
+  gmail_draft_reply: z.object({
+    thread_id: z.string().min(1),
+    body: z.string().min(1),
+  }),
+  gmail_unsubscribe: z.object({ message_id: z.string().min(1) }),
+  gmail_send: z.object({
+    to: z.string().min(1),
+    subject: z.string(),
+    body: z.string(),
+  }),
+  gmail_list_labels: EmptyObj,
+  gmail_label_thread: z.object({
+    thread_id: z.string().min(1),
+    add: z.array(z.string()).optional(),
+    remove: z.array(z.string()).optional(),
+  }),
+  get_calendar: z.object({
+    hours_ahead: z.number().int().min(1).max(24 * 30).optional(),
+  }),
+  get_github_summary: EmptyObj,
+  calendar_create_event: z.object({
+    summary: z.string().min(1),
+    start: z.string().min(1),
+    end: z.string().min(1),
+    description: z.string().optional(),
+    location: z.string().optional(),
+    attendees: z.array(z.string()).optional(),
+  }),
+  calendar_reschedule_event: z.object({
+    event_id: z.string().min(1),
+    start: z.string().min(1),
+    end: z.string().min(1),
+  }),
+  calendar_cancel_event: z.object({ event_id: z.string().min(1) }),
+  task_create: z.object({
+    text: z.string().min(1),
+    file: z.string().optional(),
+    due: z.string().optional(),
+    start: z.string().optional(),
+    scheduled: z.string().optional(),
+    priority: z.enum(["highest", "high", "medium", "low", "lowest"]).optional(),
+  }),
+  task_done: z.object({
+    file: z.string().min(1),
+    text: z.string().min(1),
+  }),
+  kb_grep: z.object({
+    category: z.string().optional(),
+    query: z.string().min(1),
+  }),
+  route_quick_capture: EmptyObj,
+  kb_list_outputs: z.object({
+    category: z.string().optional(),
+    limit: z.number().int().min(1).max(200).optional(),
+  }),
+  kb_list_categories: EmptyObj,
+  kb_ingest: z.object({
+    category: z.string().optional(),
+    title: z.string().min(1),
+    content: z.string().min(1),
+    source_url: z.string().optional(),
+    source_type: z.string().optional(),
+  }),
+  kb_query: z.object({ category: z.string().optional() }),
+  kb_read_wiki_page: z.object({
+    category: z.string().optional(),
+    path: z.string().min(1),
+  }),
+  kb_wiki_write: z.object({
+    category: z.string().optional(),
+    path: z.string().min(1),
+    content: z.string(),
+  }),
+  kb_wiki_delete: z.object({
+    category: z.string().optional(),
+    path: z.string().min(1),
+  }),
+  get_errors: z.object({
+    limit: z.number().int().min(1).max(100).optional(),
+    include_resolved: z.boolean().optional(),
+  }),
+  resolve_error: z.object({ id: z.string().min(1) }),
+  kb_write_output: z.object({
+    category: z.string().optional(),
+    title: z.string().min(1),
+    content: z.string().min(1),
+  }),
+} as const satisfies Record<string, z.ZodTypeAny>;
+
+export type ToolName = keyof typeof ToolSchemas;
+
+export type ValidatedInput =
+  | { ok: true; input: ToolInput }
+  | { ok: false; error: string };
+
+export function validateToolInput(name: string, raw: unknown): ValidatedInput {
+  const schema = (ToolSchemas as Record<string, z.ZodTypeAny>)[name];
+  if (!schema) {
+    return { ok: false, error: `unknown tool: ${name}` };
+  }
+  // Tools always receive an object input from the model. Reject non-objects
+  // up front so the friendlier zod error path can assume it's keyed.
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, error: "input must be an object" };
+  }
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const fieldPath = issue?.path?.length ? issue.path.join(".") : "(root)";
+    const msg = issue?.message ?? "invalid";
+    return { ok: false, error: `${fieldPath} ${msg}` };
+  }
+  return { ok: true, input: parsed.data as ToolInput };
+}
+
+// Tools that fire visible / hard-to-reverse side effects. The agent loop
+// pauses on these and waits for explicit user approval via /api/agent/confirm
+// before dispatching. `task_done` is intentionally OFF — it's reversible from
+// the vault side. `gmail_send` requires recipient-allowlist tracking on top.
+export const DESTRUCTIVE_TOOLS: ReadonlySet<string> = new Set([
+  "gmail_send",
+  "gmail_unsubscribe",
+  "gmail_trash",
+  "calendar_create_event",
+  "calendar_reschedule_event",
+  "calendar_cancel_event",
+  "kb_wiki_delete",
+]);
+
+export function requiresConfirmation(name: string): boolean {
+  return DESTRUCTIVE_TOOLS.has(name);
+}
+
+// ─── Per-tool confirmation pending map ────────────────────────────────────
+//
+// When the agent loop hits a destructive tool it generates a nonce, parks a
+// Promise here keyed by nonce, and emits a `tool_pending` SSE event. The
+// client posts an approve/deny decision to /api/agent/confirm which resolves
+// the Promise. A 60s timeout auto-rejects.
+
+type PendingEntry = {
+  resolve: (approved: boolean) => void;
+  timer: ReturnType<typeof setTimeout>;
+};
+
+declare global {
+  // Survive Next.js dev-mode module reloads — without this, the route handler
+  // and the agent loop would each see their own Map after HMR.
+  var __daycmd_pending_confirms: Map<string, PendingEntry> | undefined;
+}
+
+const pending: Map<string, PendingEntry> =
+  globalThis.__daycmd_pending_confirms ??
+  (globalThis.__daycmd_pending_confirms = new Map());
+
+const CONFIRM_TIMEOUT_MS = 60_000;
+
+export function awaitConfirmation(nonce: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      const entry = pending.get(nonce);
+      if (!entry) return;
+      pending.delete(nonce);
+      resolve(false);
+    }, CONFIRM_TIMEOUT_MS);
+    pending.set(nonce, { resolve, timer });
+  });
+}
+
+export function resolveConfirmation(nonce: string, approved: boolean): boolean {
+  const entry = pending.get(nonce);
+  if (!entry) return false;
+  pending.delete(nonce);
+  clearTimeout(entry.timer);
+  entry.resolve(approved);
+  return true;
+}
+
 async function appendToSection(
   section: string,
   content: string,
@@ -572,7 +806,10 @@ export async function runTool(
       }
       case "get_daily_note": {
         const note = await readDailyNote();
-        return { ok: true, result: note };
+        // Daily notes are mostly self-authored, but Quick Capture lines may
+        // include pasted email text — wrap to keep the policy uniform.
+        const wrapped = wrapUntrusted(note.content, "vault.daily_note");
+        return { ok: true, result: { ...note, content: wrapped } };
       }
       case "append_to_daily_note": {
         const section = String(input.section ?? "Quick Capture");
@@ -586,7 +823,15 @@ export async function runTool(
       case "read_past_daily_notes": {
         const days = Number(input.days ?? 7);
         const notes = await readPastDailyNotes(days);
-        return { ok: true, result: notes };
+        // Wrap each per-day body so prompt-injection in a quick-capture line
+        // can't masquerade as instructions to the agent.
+        const wrapped = notes.map((n) => ({
+          ...n,
+          content: n.exists
+            ? wrapUntrusted(n.content, `vault.daily_note:${n.date}`)
+            : n.content,
+        }));
+        return { ok: true, result: wrapped };
       }
       case "get_inbox": {
         const max = Number(input.max ?? 10);
@@ -596,7 +841,17 @@ export async function runTool(
       }
       case "gmail_get_message": {
         const detail = await getMessageDetail(String(input.message_id));
-        return { ok: true, result: detail };
+        // Gmail message bodies are the canonical attacker-controlled surface
+        // — anyone can email Isaac. Wrap the body so the model treats it as
+        // data, not instructions.
+        const wrapped: typeof detail & { body: string } = {
+          ...detail,
+          body: wrapUntrusted(
+            detail.body ?? "",
+            `gmail.message:${String(input.message_id)}`,
+          ),
+        };
+        return { ok: true, result: wrapped };
       }
       case "gmail_archive": {
         const { threadId } = await getMessageDetail(String(input.message_id));
@@ -783,7 +1038,16 @@ export async function runTool(
       case "kb_read_wiki_page": {
         const category = String(input.category ?? ctx.category ?? "Personal");
         const content = await readWikiPage(category, String(input.path));
-        return { ok: true, result: { category, path: String(input.path), content } };
+        // Wiki pages are mostly self-authored, but third-party PDFs and
+        // transcripts get ingested. Wrap to keep the policy uniform.
+        const wrapped = wrapUntrusted(
+          content,
+          `kb.wiki:${category}:${String(input.path)}`,
+        );
+        return {
+          ok: true,
+          result: { category, path: String(input.path), content: wrapped },
+        };
       }
       case "kb_wiki_write": {
         const category = String(input.category ?? ctx.category ?? "Personal");

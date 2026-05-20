@@ -3,6 +3,9 @@ import type { OAuth2Client } from "google-auth-library";
 import { db } from "./db";
 import { env } from "./config";
 
+export const OAUTH_STATE_COOKIE = "daycmd_oauth_state";
+export const OAUTH_STATE_MAX_AGE_SECONDS = 10 * 60;
+
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.modify",
@@ -86,12 +89,13 @@ export function makeClient(): OAuth2Client {
   );
 }
 
-export function authUrl(): string {
+export function authUrl(state: string): string {
   const c = makeClient();
   return c.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
     scope: SCOPES,
+    state,
   });
 }
 

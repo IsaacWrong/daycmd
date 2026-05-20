@@ -103,6 +103,9 @@ export async function microCall<T>(opts: MicroCall): Promise<T> {
   if (!env.ANTHROPIC_API_KEY) {
     throw new Error("ANTHROPIC_API_KEY not set");
   }
+  // Pre-flight budget cap. micros are single-call (no tool loop) so the
+  // worst-case overshoot is one micro call's cost — typically a fraction of
+  // a cent on Haiku. The iterative mid-flight cap lives in `streamAgent`.
   const settings = getSettings();
   if (settings.budgetDailyUsd > 0) {
     const spent = getTodaySpendUsd();

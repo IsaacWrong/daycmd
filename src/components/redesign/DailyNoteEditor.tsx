@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { format } from "date-fns";
-import { ObsidianEditor } from "./ObsidianEditor";
+import dynamic from "next/dynamic";
+import { apiFetch } from "@/lib/fetch-client";
+
+// CodeMirror 6 lives behind a dynamic import so the editor chunk is only
+// shipped when this modal actually opens.
+const ObsidianEditor = dynamic(
+  () => import("./ObsidianEditor").then((m) => m.ObsidianEditor),
+  { ssr: false },
+);
 
 type DailyResp = { path: string; content: string; exists: boolean; mtime: number };
 
@@ -86,7 +94,7 @@ export function DailyNoteEditor({
     setErrMsg(null);
     const body = JSON.stringify({ content, mtime: force ? 0 : mtime });
     try {
-      let res = await fetch("/api/obsidian/daily", {
+      let res = await apiFetch("/api/obsidian/daily", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body,
@@ -105,7 +113,7 @@ export function DailyNoteEditor({
         const j = (await res.json()) as { current?: { mtime: number } };
         if (j.current) setMtime(j.current.mtime);
         // Retry with the freshly read mtime.
-        res = await fetch("/api/obsidian/daily", {
+        res = await apiFetch("/api/obsidian/daily", {
           method: "PATCH",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ content, mtime: j.current?.mtime ?? 0 }),
@@ -151,7 +159,7 @@ export function DailyNoteEditor({
     if (!ctx || ctx.trim().length < 30) return;
     setGhostBusy(true);
     try {
-      const res = await fetch("/api/micro/ghost", {
+      const res = await apiFetch("/api/micro/ghost", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ context: ctx }),

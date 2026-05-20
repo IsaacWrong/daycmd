@@ -41,7 +41,7 @@ The lint baseline is intentionally permissive — several React 19 hook rules (`
 - `src/app/` — Next.js app router. `page.tsx` (home), `projects/[name]/page.tsx`, `settings/page.tsx`, plus `api/` route handlers.
 - `src/components/redesign/` — every UI primitive (`TodFrame`, `Masthead`, `AgentBar`, `FocusTile`, `Section`, `Sparkline`, `Glyph`, etc.). The folder name is historical; treat it as the canonical components dir.
 - `src/lib/` — server-side logic: agent loop, KB compile + lint, Obsidian read/write, GitHub/Gmail/Calendar adapters, SQLite, scheduler.
-- `data/daycmd.db` — local SQLite (gitignored). Auto-bootstraps schema on first run; legacy `ai-os.db` is auto-renamed.
+- `data/secrets.db` — local SQLite (gitignored). Auto-bootstraps schema on first run; legacy `ai-os.db` or `daycmd.db` is auto-renamed.
 - `examples/sample-vault/` — minimal vault for testing without your own Obsidian setup.
 
 ## Patterns to follow
@@ -58,6 +58,36 @@ The lint baseline is intentionally permissive — several React 19 hook rules (`
 - Don't add `dark:` variants or `bg-zinc-*` classes — TOD palette handles theming.
 - Don't add agent tools without surfacing the side effect (file write, email send) in the README safety section.
 - Don't seed automations that aren't idempotent — `ensureDefaultKbAutomations` is the reference pattern.
+
+## Extending daycmd
+
+Three common extension shapes. Each is intentionally short — read the referenced files for the full pattern.
+
+### Add a new agent tool
+
+Tools are what Claude can *do* (read files, send mail, hit GitHub). Each lives as one entry in the `tools` array plus one `case` in the `runTool` dispatcher.
+
+1. Append a new entry to the `tools` array in `src/lib/agent-tools.ts` (name, description, JSON-schema `input_schema`).
+2. Add a matching `case "<name>":` to `runTool` in the same file. Validate inputs with `zod` and return a string (or JSON-stringified object).
+3. If the tool needs special framing (e.g. "always call X before Y"), update `SYSTEM_PROMPT` in `src/lib/agent.ts`.
+4. Files: `src/lib/agent-tools.ts`, `src/lib/agent.ts` (system prompt only if behavior changes), README **Safety** section if the tool writes to user data.
+
+### Add a new user-facing skill
+
+Skills are the `⌘1`–`⌘6` buttons in the agent bar — preset prompts with model/effort/maxTokens defaults.
+
+1. Append a new `SkillDef` to `SKILLS` in `src/lib/skills-defs.ts` with a unique `id`, a `category` (e.g. `"Personal"`, `"Research"`), and the locked-in `prompt`.
+2. `SkillStrip` (`src/components/redesign/agent-bar/SkillStrip.tsx`) auto-picks the first 6 skills whose `category` matches the current category, so order matters within a category.
+3. Files: `src/lib/skills-defs.ts`. No component changes needed unless you want a non-default presentation.
+
+### Add a new automation row
+
+Automations are cron-scheduled agent runs persisted in SQLite and reloaded on edit.
+
+1. If you want it seeded on first boot, add an entry next to `ensureDefaultKbAutomations` in `src/lib/automations.ts` — use that function as the idempotent reference.
+2. Otherwise insert via the existing CRUD helpers (`createAutomation`, etc.). Schema lives in `src/lib/db.ts` (`automations` + `automation_runs` tables).
+3. Cron strings use [`node-cron`](https://www.npmjs.com/package/node-cron) syntax (5-field, local time). The scheduler only runs when `ENABLE_SCHEDULER=1` (see `instrumentation.ts`).
+4. Files: `src/lib/automations.ts`, optionally `src/lib/db.ts` if a new column is needed (add an `ALTER TABLE` migration in the bootstrap block).
 
 ## Reporting bugs / requesting features
 

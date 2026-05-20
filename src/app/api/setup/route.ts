@@ -10,13 +10,22 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Reject \r, \n, \0 to prevent env-line injection — a value like
+// "sk-real\nGOOGLE_REDIRECT_URI=http://evil.com/cb" would otherwise write a
+// second line and hijack OAuth on next restart.
+const envValue = z
+  .string()
+  .refine((v) => !/[\r\n\0]/.test(v), {
+    message: "must not contain newline or NUL characters",
+  });
+
 const Body = z.object({
-  VAULT_PATH: z.string().optional(),
-  ANTHROPIC_API_KEY: z.string().optional(),
-  GITHUB_TOKEN: z.string().optional(),
-  GOOGLE_CLIENT_ID: z.string().optional(),
-  GOOGLE_CLIENT_SECRET: z.string().optional(),
-  GOOGLE_REDIRECT_URI: z.string().optional(),
+  VAULT_PATH: envValue.optional(),
+  ANTHROPIC_API_KEY: envValue.optional(),
+  GITHUB_TOKEN: envValue.optional(),
+  GOOGLE_CLIENT_ID: envValue.optional(),
+  GOOGLE_CLIENT_SECRET: envValue.optional(),
+  GOOGLE_REDIRECT_URI: envValue.optional(),
 });
 
 export async function GET() {

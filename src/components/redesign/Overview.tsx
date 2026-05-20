@@ -7,7 +7,15 @@ import type { GhSummary } from "@/lib/github";
 import type { GmailMsg } from "@/lib/gmail";
 import type { ErrorRow } from "@/lib/errors";
 import type { SectionKey } from "./DashboardNav";
-import { Markdown } from "@/components/Markdown";
+import dynamic from "next/dynamic";
+import { apiFetch } from "@/lib/fetch-client";
+
+// react-markdown + remark-gfm (~40 KB gzipped) only renders when the
+// morning brief is expanded — defer the chunk until then.
+const Markdown = dynamic(
+  () => import("@/components/Markdown").then((m) => m.Markdown),
+  { ssr: false },
+);
 
 type RankResp = { ranked: Array<{ id: string; reason: string }>; error?: string };
 type BriefResp = { brief: { ts: number; output: string } | null };
@@ -327,7 +335,7 @@ export function Overview({
   async function runBrief() {
     setBriefBusy(true);
     try {
-      await fetch("/api/micro/morning-brief", { method: "POST" });
+      await apiFetch("/api/micro/morning-brief", { method: "POST" });
       mutate("/api/micro/morning-brief");
     } finally {
       setBriefBusy(false);
@@ -401,7 +409,7 @@ export function Overview({
   async function toggle(t: ObsidianTask) {
     if (t.done) return;
     try {
-      const res = await fetch("/api/obsidian/tasks", {
+      const res = await apiFetch("/api/obsidian/tasks", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ file: t.file, text: t.text }),
@@ -506,7 +514,7 @@ export function Overview({
       let subtasks: string[] = [];
 
       if (s.action === "infer-due") {
-        const r = await fetch("/api/micro/task-infer-due", {
+        const r = await apiFetch("/api/micro/task-infer-due", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ text: s.task.text }),
@@ -520,7 +528,7 @@ export function Overview({
         inferDue = j.due;
         inferPriority = j.priority;
       } else if (s.action === "reschedule") {
-        const r = await fetch("/api/micro/task-reschedule", {
+        const r = await apiFetch("/api/micro/task-reschedule", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ text: s.task.text, currentDue: s.task.due }),
@@ -529,7 +537,7 @@ export function Overview({
         if (j.error) throw new Error(j.error);
         inferDue = j.due;
       } else {
-        const r = await fetch("/api/micro/task-split", {
+        const r = await apiFetch("/api/micro/task-split", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ text: s.task.text }),
@@ -549,7 +557,7 @@ export function Overview({
         }
         const file = s.task.file.split("/").pop()?.replace(/\.md$/, "");
         for (const text of subtasks) {
-          const res = await fetch("/api/obsidian/tasks", {
+          const res = await apiFetch("/api/obsidian/tasks", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
@@ -578,7 +586,7 @@ export function Overview({
           }));
           return;
         }
-        const res = await fetch("/api/obsidian/tasks", {
+        const res = await apiFetch("/api/obsidian/tasks", {
           method: "PUT",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({

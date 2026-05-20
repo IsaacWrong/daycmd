@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { mutate, usePoll } from "@/lib/hooks";
 import type { ObsidianTask, Priority } from "@/lib/tasks-parser";
 import { Section } from "./Section";
+import { apiFetch } from "@/lib/fetch-client";
 
 const PRIO_GLYPH: Record<NonNullable<Priority>, string> = {
   highest: "🔺",
@@ -88,7 +89,7 @@ function TaskRow({
     setAiBusy(true);
     try {
       if (action === "due") {
-        const res = await fetch("/api/micro/task-infer-due", {
+        const res = await apiFetch("/api/micro/task-infer-due", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ text: t.text }),
@@ -99,7 +100,7 @@ function TaskRow({
         if ("error" in json) setAi({ kind: "error", message: json.error });
         else setAi({ kind: "due", ...json });
       } else if (action === "split") {
-        const res = await fetch("/api/micro/task-split", {
+        const res = await apiFetch("/api/micro/task-split", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ text: t.text }),
@@ -110,7 +111,7 @@ function TaskRow({
         if ("error" in json) setAi({ kind: "error", message: json.error });
         else setAi({ kind: "split", ...json });
       } else {
-        const res = await fetch("/api/micro/task-reschedule", {
+        const res = await apiFetch("/api/micro/task-reschedule", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ text: t.text, currentDue: t.due }),
@@ -561,7 +562,7 @@ function NewTaskRow({ projectFilter }: { projectFilter?: string }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/obsidian/tasks", {
+      const res = await apiFetch("/api/obsidian/tasks", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -704,7 +705,7 @@ export function TaskList({ projectFilter }: { projectFilter?: string }) {
   async function toggle(t: ObsidianTask) {
     if (t.done) return;
     try {
-      const res = await fetch("/api/obsidian/tasks", {
+      const res = await apiFetch("/api/obsidian/tasks", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ file: t.file, text: t.text }),
@@ -723,7 +724,7 @@ export function TaskList({ projectFilter }: { projectFilter?: string }) {
     try {
       const file = t.file.split("/").pop()?.replace(/\.md$/, "");
       for (const text of subtasks) {
-        const res = await fetch("/api/obsidian/tasks", {
+        const res = await apiFetch("/api/obsidian/tasks", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
@@ -752,7 +753,7 @@ export function TaskList({ projectFilter }: { projectFilter?: string }) {
     const parsed = parseDraft(rawDraft);
     if (!parsed.text) return { ok: false, error: "text required" };
     try {
-      const res = await fetch("/api/obsidian/tasks", {
+      const res = await apiFetch("/api/obsidian/tasks", {
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

@@ -7,6 +7,7 @@ import type { RepoStats } from "@/lib/github";
 import type { ObsidianTask } from "@/lib/tasks-parser";
 import { Sparkline } from "./Sparkline";
 import { SectionMini, type SourceAccent } from "./Section";
+import { apiFetch } from "@/lib/fetch-client";
 
 type ProjectDTO = {
   name: string;
@@ -279,7 +280,7 @@ export function ProjectsList() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/projects", {
+      const res = await apiFetch("/api/projects", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ name: name.trim(), repo: repo.trim() || undefined }),
