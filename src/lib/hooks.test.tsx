@@ -69,4 +69,29 @@ describe("usePoll", () => {
     render(<Probe url="/api/x" />);
     await waitFor(() => expect(screen.getByTestId("err").textContent).toBe("nope"));
   });
+
+  it("still revalidates via mutate() when the tab is hidden", async () => {
+    let n = 1;
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ n: n++ }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const visibilitySpy = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("hidden");
+
+    render(<Probe url="/api/hidden" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("n").textContent).toBe("1"),
+    );
+
+    act(() => {
+      mutate("/api/hidden");
+    });
+    await waitFor(() => expect(screen.getByTestId("n").textContent).toBe("2"));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    visibilitySpy.mockRestore();
+  });
 });
