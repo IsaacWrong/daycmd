@@ -11,6 +11,7 @@ import {
   type Effort,
   type SkillOverride,
 } from "@/lib/skills-defs";
+import { apiFetch } from "@/lib/fetch-client";
 
 type Settings = {
   budgetDailyUsd: number;
@@ -117,7 +118,7 @@ export default function SettingsPage() {
         setEnvMsg({ ok: false, text: "Nothing to save." });
         return;
       }
-      const res = await fetch("/api/setup", {
+      const res = await apiFetch("/api/setup", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
@@ -144,7 +145,7 @@ export default function SettingsPage() {
   }
 
   async function save(patch: Partial<Settings>) {
-    const res = await fetch("/api/settings", {
+    const res = await apiFetch("/api/settings", {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(patch),
@@ -157,7 +158,7 @@ export default function SettingsPage() {
 
   async function disconnectGoogle() {
     if (!confirm("Disconnect Google? Will need to reauth Gmail + Calendar.")) return;
-    await fetch("/api/auth/google/status", { method: "DELETE" });
+    await apiFetch("/api/auth/google/status", { method: "DELETE" });
     setGoogle({ configured: google?.configured ?? false, connected: false });
   }
 
