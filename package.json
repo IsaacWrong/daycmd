@@ -11,7 +11,11 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "video:studio": "remotion studio remotion/index.ts",
+    "video:render": "remotion render hero docs/hero.mp4 --codec h264 --crf 22",
+    "video:shots": "node scripts/capture-tutorial-shots.mjs",
+    "video:tutorials": "bash scripts/render-tutorials.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.2",
@@ -41,6 +45,8 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
+    "@remotion/cli": "^4.0.463",
+    "@remotion/google-fonts": "^4.0.463",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -54,6 +60,7 @@
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.6",
     "jsdom": "^29.1.1",
+    "remotion": "^4.0.463",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.6"

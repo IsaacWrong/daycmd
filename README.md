@@ -6,8 +6,11 @@
 
 Opens with your browser. Knows your day. Routes the work through Claude.
 
-<!-- Replace with a 30-second screen recording or hero gif. -->
-<!-- ![Daycmd — hero](docs/hero.gif) -->
+<a href="docs/hero.mp4">
+  <img src="docs/hero.gif" alt="Daycmd — 30-second tour: setup, home, agent skills" width="880">
+</a>
+
+<sub>30s · <a href="docs/hero.mp4">MP4 (1080p)</a> · regenerate with <code>npm run video:render</code></sub>
 
 </div>
 
@@ -112,6 +115,8 @@ npm run dev
 Open `http://localhost:3000/setup`. The first-run wizard writes the rest of your keys to `.env.local`, validates the vault path, and links you to the dashboard. Restart `npm run dev` after saving — Next caches `process.env` at boot.
 
 Once `/setup` shows **ready**, open `http://localhost:3000` and pin as your new-tab page.
+
+> **Short setup walkthroughs:** see [`docs/TUTORIALS.md`](docs/TUTORIALS.md) — animated GIFs for the budget cap, Google OAuth, GitHub PAT, vault swap, agent skills, and the KB compile flow.
 
 > **Prefer to edit by hand?** `cp .env.local.example .env.local` and fill in `VAULT_PATH` + `ANTHROPIC_API_KEY` at minimum.
 >
