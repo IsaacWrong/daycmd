@@ -85,11 +85,14 @@ async function pushLocalStorageToVault(categories: string[]): Promise<void> {
 export function useAgent(initialCategory?: string) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [busy, setBusy] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [categories, setCategories] = useState<string[]>([initialCategory ?? "Personal"]);
   const [category, setCategoryState] = useState(initialCategory ?? "Personal");
   const [hydrated, setHydrated] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const stoppingRef = useRef(false);
+  const abortConfirmedRef = useRef(false);
   const messagesCache = useRef<Map<string, Msg[]>>(new Map());
   const containerCache = useRef<Map<string, string | null>>(new Map());
 
@@ -203,6 +206,9 @@ export function useAgent(initialCategory?: string) {
 
     const controller = new AbortController();
     abortRef.current = controller;
+    stoppingRef.current = false;
+    abortConfirmedRef.current = false;
+    setStopping(false);
 
     try {
       const res = await fetch("/api/agent", {
@@ -282,6 +288,22 @@ export function useAgent(initialCategory?: string) {
             const id = String(ev.data);
             containerCache.current.set(useCategory, id);
             void putState(containerStateKey(useCategory), id);
+          } else if (ev.type === "aborted") {
+            abortConfirmedRef.current = true;
+            setMessages((prev) => {
+              if (prev.length === 0) return prev;
+              const copy = [...prev];
+              const last = copy[copy.length - 1];
+              if (!last || last.role !== "assistant") return prev;
+              copy[copy.length - 1] = {
+                ...last,
+                content:
+                  last.content +
+                  (last.content ? "\n\n_[stopped]_" : "_[stopped]_"),
+                endedAt: Date.now(),
+              };
+              return copy;
+            });
           } else if (ev.type === "error") {
             setError(String(ev.data));
           }
@@ -289,23 +311,32 @@ export function useAgent(initialCategory?: string) {
       }
     } catch (e) {
       if ((e as Error).name === "AbortError") {
-        setMessages((prev) => {
-          if (prev.length === 0) return prev;
-          const copy = [...prev];
-          const last = copy[copy.length - 1];
-          if (!last || last.role !== "assistant") return prev;
-          copy[copy.length - 1] = {
-            ...last,
-            content: last.content + (last.content ? "\n\n_[stopped]_" : "_[stopped]_"),
-            endedAt: Date.now(),
-          };
-          return copy;
-        });
+        // The client aborted the fetch — the server may still be tearing down
+        // (it gets req.signal too). Only render a synthetic "_[stopped]_" if
+        // the server didn't already confirm via an `aborted` SSE event.
+        if (!abortConfirmedRef.current) {
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (!last || last.role !== "assistant") return prev;
+            copy[copy.length - 1] = {
+              ...last,
+              content:
+                last.content +
+                (last.content ? "\n\n_[stopped]_" : "_[stopped]_"),
+              endedAt: Date.now(),
+            };
+            return copy;
+          });
+        }
       } else {
         setError((e as Error).message);
       }
     } finally {
       abortRef.current = null;
+      stoppingRef.current = false;
+      setStopping(false);
       setBusy(false);
       setMessages((prev) => {
         if (prev.length === 0) return prev;
@@ -319,7 +350,10 @@ export function useAgent(initialCategory?: string) {
   }
 
   function stop() {
-    abortRef.current?.abort();
+    if (!abortRef.current || stoppingRef.current) return;
+    stoppingRef.current = true;
+    setStopping(true);
+    abortRef.current.abort();
   }
 
   function clear() {
@@ -328,5 +362,17 @@ export function useAgent(initialCategory?: string) {
     void deleteRemoteState(containerStateKey(category));
   }
 
-  return { messages, busy, error, categories, category, setCategory, send, stop, clear, hydrated };
+  return {
+    messages,
+    busy,
+    stopping,
+    error,
+    categories,
+    category,
+    setCategory,
+    send,
+    stop,
+    clear,
+    hydrated,
+  };
 }
