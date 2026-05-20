@@ -14,6 +14,10 @@ contain breaking changes.
 - `.github/dependabot.yml` — weekly grouped npm + github-actions updates; major bumps for `next` / `react` / `react-dom` land separately.
 - README **Support the project** section.
 
+### Changed
+
+- SQLite file renamed from `data/daycmd.db` to `data/secrets.db`. Existing `daycmd.db` or `ai-os.db` is auto-renamed at boot.
+
 ## [0.1.1] - 2026-05-19
 
 ### Fixed

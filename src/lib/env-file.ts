@@ -39,10 +39,21 @@ function quoteIfNeeded(value: string): string {
  * Merge updates into .env.local. Keys present in `updates` replace existing
  * lines (preserving order); new keys are appended. Empty-string values *clear*
  * the line. Atomic write via temp file + rename.
+ *
+ * Throws if any value contains \r, \n, or \0 — these would allow an attacker
+ * to inject additional env lines (e.g. overwriting GOOGLE_REDIRECT_URI).
  */
 export async function updateEnvFile(
   updates: Partial<Record<EnvKey, string>>,
 ): Promise<void> {
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === undefined) continue;
+    if (/[\r\n\0]/.test(value)) {
+      throw new Error(
+        `value for ${key} must not contain newline or NUL characters`,
+      );
+    }
+  }
   const existing = await readEnvFile();
   const lines = existing.split(/\r?\n/);
   const seen = new Set<string>();

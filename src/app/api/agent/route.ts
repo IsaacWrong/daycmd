@@ -52,6 +52,7 @@ export async function POST(req: Request) {
           model,
           effort,
           maxTokens,
+          signal: req.signal,
         })) {
           send(ev);
         }

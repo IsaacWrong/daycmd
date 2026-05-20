@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/fetch-client";
+
 const inflight = new Map<string, Promise<unknown>>();
 
 export async function fetchState<T = unknown>(key: string): Promise<T | null> {
@@ -23,7 +25,7 @@ export async function fetchState<T = unknown>(key: string): Promise<T | null> {
 
 export async function putState(key: string, value: unknown): Promise<boolean> {
   try {
-    const res = await fetch(`/api/state/${key}`, {
+    const res = await apiFetch(`/api/state/${key}`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(value),
@@ -36,7 +38,7 @@ export async function putState(key: string, value: unknown): Promise<boolean> {
 
 export async function deleteRemoteState(key: string): Promise<boolean> {
   try {
-    const res = await fetch(`/api/state/${key}`, { method: "DELETE" });
+    const res = await apiFetch(`/api/state/${key}`, { method: "DELETE" });
     return res.ok;
   } catch {
     return false;

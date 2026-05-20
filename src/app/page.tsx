@@ -29,6 +29,7 @@ import { Overview } from "@/components/redesign/Overview";
 import { AgentBar } from "@/components/redesign/AgentBar";
 import { CalendarOverlayProvider } from "@/components/calendar/CalendarOverlayProvider";
 import { MailOverlayProvider } from "@/components/mail/MailOverlayProvider";
+import { apiFetch } from "@/lib/fetch-client";
 
 const SECTION_LS = "daycmd.dashboard.section";
 const NAV_W_LS = "daycmd.dashboard.navWidth";
@@ -159,7 +160,7 @@ export default function Home() {
   }, [router]);
 
   useEffect(() => {
-    fetch("/api/kb/auto-compile", { method: "POST" }).catch(() => {});
+    apiFetch("/api/kb/auto-compile", { method: "POST" }).catch(() => {});
   }, []);
 
   return (

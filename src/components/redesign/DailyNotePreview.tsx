@@ -1,10 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { usePoll } from "@/lib/hooks";
 import { Arrow } from "./Glyph";
 import { Section } from "./Section";
-import { DailyNoteEditor } from "./DailyNoteEditor";
+
+// CodeMirror 6 + 7 sub-packages (~150-200 KB) only run after the user clicks
+// "Continue writing", so defer the entire editor chunk until then.
+const DailyNoteEditor = dynamic(
+  () => import("./DailyNoteEditor").then((m) => m.DailyNoteEditor),
+  { ssr: false },
+);
 
 type DailyResp = { path: string; content: string; exists: boolean; mtime: number };
 

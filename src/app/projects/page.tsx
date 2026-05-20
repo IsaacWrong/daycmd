@@ -6,6 +6,7 @@ import { useFocusMode, useTod, TodFrame } from "@/components/redesign/TodFrame";
 import { usePoll } from "@/lib/hooks";
 import { Section, type SourceAccent } from "@/components/redesign/Section";
 import { Sparkline } from "@/components/redesign/Sparkline";
+import { apiFetch } from "@/lib/fetch-client";
 
 type ProjectRow = {
   name: string;
@@ -112,7 +113,7 @@ export default function ProjectsOverviewPage() {
     setBusy(true);
     setAddError(null);
     try {
-      const res = await fetch("/api/projects", {
+      const res = await apiFetch("/api/projects", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

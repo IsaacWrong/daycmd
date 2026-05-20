@@ -15,7 +15,7 @@ Opens with your browser. Knows your day. Routes the work through Claude.
 
 ## What it is
 
-A single Next.js app that runs on `localhost`, reads your Obsidian vault, your Gmail, your Calendar, your GitHub, and your Anthropic spend, and gives you one page that opens with the browser every morning. A Claude agent sits in the dock. Skills (`⌘1`–`⌘6`) trigger triage / brief / plan / lint / review flows. Focus mode dims everything except the work in front of you. The background gradient shifts with the hour.
+A single Next.js app that runs on `localhost`, reads your Obsidian vault, your Gmail, your Calendar, your GitHub, and your Anthropic spend, and gives you one page that opens with the browser every morning. A Claude agent sits in the dock. Skills (`⌘1`–`⌘6`) trigger brief / triage / plan / stale / reflect / capture flows on the default `Personal` category. Focus mode dims everything except the work in front of you. The background gradient shifts with the hour.
 
 It is not Notion. It is not a workspace. It is a calm command center — read this, do this, talk to Claude about it.
 
@@ -52,10 +52,10 @@ Per category:
 - `wiki/` — compiled INDEX + concept + people + source pages.
 - `output/` — polished deliverables.
 
-Compile + lint run automatically:
+Compile + lint run automatically (when the scheduler is enabled — see `ENABLE_SCHEDULER` below):
 - **Cron · 06:00 daily** — compile per category.
 - **Cron · 06:30 daily** — lint per category.
-- **Dashboard mount** — stale sweep: any category with drift and last compile > 6h triggers compile → lint chain.
+- **Dashboard mount** — stale sweep: any category with drift and last compile > 6h triggers compile → lint chain. (Runs on dashboard load regardless of `ENABLE_SCHEDULER`.)
 - **Manual** — `run` button per category in the Knowledge section.
 
 Lint findings flow into the Errors section + mirror to `Errors/{date}.md` in the vault.
@@ -131,6 +131,19 @@ Once `/setup` shows **ready**, open `http://localhost:3000` and pin as your new-
 | `GITHUB_TOKEN` | Classic PAT w/ scopes `repo`, `notifications`, `read:user`. Powers GitHub section, ship streak, heatmap. |
 | `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | OAuth web client. Redirect URI `http://localhost:3000/api/auth/google/callback`. Click *Connect Google* in `/settings` to authorize Gmail + Calendar. |
 
+### Experimental / undocumented integrations
+
+These are wired in code but not part of the documented happy path. Treat as personal-use experiments — APIs, env names, and behavior may change without notice.
+
+| Env | Purpose |
+|---|---|
+| `ENABLE_SCHEDULER` | Set to `1` to start the `node-cron` scheduler from `instrumentation.ts`. Unset by default — leave off in foreground dev, enable for the launchd service or when testing crons. |
+| `DISCORD_BOT_TOKEN` | Bot token for the Discord integration exposed via `src/lib/settings.ts` (`getDiscordSettings`). You can also paste the token through `/settings` instead of the env file; the DB copy wins. |
+| `POSTHOG_API_KEY` | PostHog personal API key used by project hero stats / analytics adapters. |
+| `POSTHOG_BASE_URL` | PostHog API base URL. Defaults to `https://us.posthog.com`. |
+| `KERNEL_API_KEY` | API key for [Kernel](https://onkernel.com) browser sessions. Consumed only by `scripts/kernel-smoke.mjs` (manual smoke test). |
+| `TARGET_URL` | Tunnel / public URL the Kernel smoke script should drive. Set alongside `KERNEL_API_KEY` when running `node scripts/kernel-smoke.mjs`. |
+
 ## Stack
 
 Next.js 16 · React 19 · TypeScript · Tailwind v4 (`@theme inline` design tokens) · SQLite via `better-sqlite3` · `@anthropic-ai/sdk` · `googleapis` · `octokit` · `node-cron` · `gray-matter` · `date-fns` · `zod`.
@@ -138,11 +151,11 @@ Next.js 16 · React 19 · TypeScript · Tailwind v4 (`@theme inline` design toke
 ## Architecture notes
 
 - **Vault-as-truth.** All notes, tasks, daily entries, KB pages, and lint output live as markdown in the vault. Open them in Obsidian, edit them in Vim, sync via Obsidian Sync or git. Daycmd reads + writes through plain `fs`.
-- **SQLite is a fast cache.** `data/daycmd.db` holds OAuth tokens, usage rows, automations, error log, agent threads. Gitignored. Errors are also mirrored to `Errors/{date}.md` in the vault for cross-device durability. A legacy `data/ai-os.db` is auto-migrated on first run.
+- **SQLite is a fast cache.** `data/secrets.db` holds OAuth tokens, usage rows, automations, error log, agent threads. Gitignored. Errors are also mirrored to `Errors/{date}.md` in the vault for cross-device durability. A legacy `ai-os.db` or `daycmd.db` is auto-renamed on first run.
 - **Per-device append-only logs live OUTSIDE `.obsidian/`.** AI usage, error rows, automation runs, and KB compile records are written to `<VAULT_PATH>/daycmd/logs/<hostname>/<table>.ndjson`. Each device writes only its own file (no merge conflicts); reads union across all device folders. The path is deliberately *not* under `.obsidian/` because Obsidian Sync excludes most of `.obsidian/` by default — putting logs there caused AI spend to diverge across devices. Settings JSON still lives at `<VAULT_PATH>/.obsidian/daycmd/*.json` (Obsidian Sync's plugin-config toggle covers it). On first run after upgrading, any legacy `<VAULT_PATH>/.obsidian/daycmd/logs/` data is auto-migrated to the new location.
 - **Time-of-day palette via CSS vars.** `.tod-*` classes on `.daycmd-frame` swap `--bg-a`, `--fg`, `--rule`, `--glass`, orb colors, etc. No `dark:` Tailwind variants anywhere.
 - **OKLCH-relative colors throughout** (`oklch(from var(--fg) l c h / 0.1)`). Tailwind v4 + modern browsers.
-- **Scheduler boots from `instrumentation.ts`.** Default KB compile + lint rows are seeded per category on first run (idempotent). Stale-sweep endpoint at `POST /api/kb/auto-compile`.
+- **Scheduler boots from `instrumentation.ts`** only when `ENABLE_SCHEDULER=1` is set in the environment. Leave it unset during foreground `npm run dev` to avoid duplicate cron firings; set it for the launchd service (`scripts/com.daycmd.server.plist.example`) or when you want to test crons locally. Default KB compile + lint rows are seeded per category on first run (idempotent). Stale-sweep endpoint at `POST /api/kb/auto-compile`.
 - **All input validated through `zod` schemas at API boundaries.**
 - **Daily-note ensure**: `GET /api/obsidian/daily` lazily renders today's note from your `.obsidian/daily-notes.json` template if missing. Moment-style tokens (`{{date:dddd}}` etc.) are mapped to date-fns.
 

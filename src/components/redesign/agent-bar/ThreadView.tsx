@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Markdown } from "@/components/Markdown";
+import dynamic from "next/dynamic";
 import type { Msg } from "../useAgent";
+
+// react-markdown + remark-gfm (~40 KB gzipped) only renders when an
+// assistant message arrives — defer the chunk until then.
+const Markdown = dynamic(
+  () => import("@/components/Markdown").then((m) => m.Markdown),
+  { ssr: false },
+);
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
