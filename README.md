@@ -52,10 +52,10 @@ Per category:
 - `wiki/` — compiled INDEX + concept + people + source pages.
 - `output/` — polished deliverables.
 
-Compile + lint run automatically:
+Compile + lint run automatically (when the scheduler is enabled — see `ENABLE_SCHEDULER` below):
 - **Cron · 06:00 daily** — compile per category.
 - **Cron · 06:30 daily** — lint per category.
-- **Dashboard mount** — stale sweep: any category with drift and last compile > 6h triggers compile → lint chain.
+- **Dashboard mount** — stale sweep: any category with drift and last compile > 6h triggers compile → lint chain. (Runs on dashboard load regardless of `ENABLE_SCHEDULER`.)
 - **Manual** — `run` button per category in the Knowledge section.
 
 Lint findings flow into the Errors section + mirror to `Errors/{date}.md` in the vault.
@@ -142,7 +142,7 @@ Next.js 16 · React 19 · TypeScript · Tailwind v4 (`@theme inline` design toke
 - **Per-device append-only logs live OUTSIDE `.obsidian/`.** AI usage, error rows, automation runs, and KB compile records are written to `<VAULT_PATH>/daycmd/logs/<hostname>/<table>.ndjson`. Each device writes only its own file (no merge conflicts); reads union across all device folders. The path is deliberately *not* under `.obsidian/` because Obsidian Sync excludes most of `.obsidian/` by default — putting logs there caused AI spend to diverge across devices. Settings JSON still lives at `<VAULT_PATH>/.obsidian/daycmd/*.json` (Obsidian Sync's plugin-config toggle covers it). On first run after upgrading, any legacy `<VAULT_PATH>/.obsidian/daycmd/logs/` data is auto-migrated to the new location.
 - **Time-of-day palette via CSS vars.** `.tod-*` classes on `.daycmd-frame` swap `--bg-a`, `--fg`, `--rule`, `--glass`, orb colors, etc. No `dark:` Tailwind variants anywhere.
 - **OKLCH-relative colors throughout** (`oklch(from var(--fg) l c h / 0.1)`). Tailwind v4 + modern browsers.
-- **Scheduler boots from `instrumentation.ts`.** Default KB compile + lint rows are seeded per category on first run (idempotent). Stale-sweep endpoint at `POST /api/kb/auto-compile`.
+- **Scheduler boots from `instrumentation.ts`** only when `ENABLE_SCHEDULER=1` is set in the environment. Leave it unset during foreground `npm run dev` to avoid duplicate cron firings; set it for the launchd service (`scripts/com.daycmd.server.plist.example`) or when you want to test crons locally. Default KB compile + lint rows are seeded per category on first run (idempotent). Stale-sweep endpoint at `POST /api/kb/auto-compile`.
 - **All input validated through `zod` schemas at API boundaries.**
 - **Daily-note ensure**: `GET /api/obsidian/daily` lazily renders today's note from your `.obsidian/daily-notes.json` template if missing. Moment-style tokens (`{{date:dddd}}` etc.) are mapped to date-fns.
 
