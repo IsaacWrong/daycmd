@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SkillDef } from "@/lib/skills-defs";
 import { migrateKey, migratePrefix } from "@/lib/ls-migrate";
 import { mutate } from "@/lib/hooks";
+import { apiFetch } from "@/lib/fetch-client";
 import {
   fetchState,
   putState,
@@ -102,7 +103,7 @@ export function useAgent(initialCategory?: string) {
     (async () => {
       let names: string[] = [];
       try {
-        const res = await fetch("/api/kb");
+        const res = await apiFetch("/api/kb");
         const j = (await res.json()) as { categories: Array<{ name: string }> };
         names = (j.categories ?? []).map((c) => c.name);
       } catch {}
@@ -211,7 +212,7 @@ export function useAgent(initialCategory?: string) {
     setStopping(false);
 
     try {
-      const res = await fetch("/api/agent", {
+      const res = await apiFetch("/api/agent", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

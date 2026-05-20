@@ -18,12 +18,6 @@ import type { NextRequest } from "next/server";
 // ticket references `src/middleware.ts`; the file convention has moved on.
 // Behavior is identical.
 //
-// TODO(agent-cluster): src/components/redesign/useAgent.ts still posts to
-// /api/agent with a bare fetch() — that POST will be rejected by this proxy
-// until it adopts apiFetch() (or sets `x-daycmd: 1` directly). The
-// agent-safety cluster owns useAgent.ts so this CSRF migration leaves it
-// untouched. Coordinate the import change with them.
-
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 function deny(reason: string): NextResponse {
