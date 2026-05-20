@@ -73,6 +73,13 @@ html, body {
 * { box-sizing: border-box; }
 button { font-family: inherit; }
 
+/* ── Global keyboard focus ring ──────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--c-tasks);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
 /* ── Artboard frame ──────────────────────────────────────────────── */
 .daycmd-frame {
   position: relative;
