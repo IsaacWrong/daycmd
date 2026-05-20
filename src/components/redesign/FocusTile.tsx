@@ -5,6 +5,7 @@ import { migrateKey } from "@/lib/ls-migrate";
 import { fetchState, putState } from "@/lib/vault-state-client";
 import { usePoll } from "@/lib/hooks";
 import { useActiveTimer } from "@/lib/timer";
+import { apiFetch } from "@/lib/fetch-client";
 
 type ProjectListItem = { name: string };
 type ProjectsResp = { projects: ProjectListItem[] };
@@ -247,7 +248,7 @@ export function FocusTile({ defaultProject = "Daycmd" }: { defaultProject?: stri
       const line = trimmed
         ? `- \`${time}\` · Pomodoro ${captureFor.count} · ${captureFor.project} — ${summary}`
         : `- \`${time}\` · Pomodoro ${captureFor.count} · ${captureFor.project}`;
-      await fetch("/api/obsidian/daily", {
+      await apiFetch("/api/obsidian/daily", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ text: line }),
