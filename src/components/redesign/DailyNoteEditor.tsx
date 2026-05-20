@@ -3,7 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { format } from "date-fns";
-import { ObsidianEditor } from "./ObsidianEditor";
+import dynamic from "next/dynamic";
+
+// CodeMirror 6 lives behind a dynamic import so the editor chunk is only
+// shipped when this modal actually opens.
+const ObsidianEditor = dynamic(
+  () => import("./ObsidianEditor").then((m) => m.ObsidianEditor),
+  { ssr: false },
+);
 
 type DailyResp = { path: string; content: string; exists: boolean; mtime: number };
 
