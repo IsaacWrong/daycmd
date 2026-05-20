@@ -111,6 +111,7 @@ export async function* streamAgent(
     model?: string;
     effort?: Effort;
     maxTokens?: number;
+    signal?: AbortSignal;
   } = {},
 ): AsyncGenerator<{ type: string; data: unknown }> {
   if (!env.ANTHROPIC_API_KEY) {
@@ -135,6 +136,7 @@ export async function* streamAgent(
   const model = opts.model ?? DEFAULT_MODEL;
   const effort = clampEffort(model, opts.effort ?? DEFAULT_EFFORT);
   const maxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS;
+  const signal = opts.signal;
   let containerId: string | null = opts.containerId ?? null;
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
@@ -203,22 +205,31 @@ export async function* streamAgent(
   const MAX_ITERATIONS = 8;
   try {
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    const stream = client.messages.stream({
-      ...(containerId ? { container: containerId } : {}),
-      model,
-      max_tokens: maxTokens,
-      thinking: { type: "adaptive" },
-      output_config: { effort },
-      system: [
-        {
-          type: "text",
-          text: SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral", ttl: "1h" },
-        },
-      ],
-      tools,
-      messages: apiMessages,
-    });
+    if (signal?.aborted) {
+      recordUsage({ source, model, ...totals });
+      await logRaw();
+      yield { type: "aborted", data: "aborted by user" };
+      return;
+    }
+    const stream = client.messages.stream(
+      {
+        ...(containerId ? { container: containerId } : {}),
+        model,
+        max_tokens: maxTokens,
+        thinking: { type: "adaptive" },
+        output_config: { effort },
+        system: [
+          {
+            type: "text",
+            text: SYSTEM_PROMPT,
+            cache_control: { type: "ephemeral", ttl: "1h" },
+          },
+        ],
+        tools,
+        messages: apiMessages,
+      },
+      signal ? { signal } : undefined,
+    );
 
     for await (const event of stream) {
       if (event.type === "content_block_start") {
@@ -305,6 +316,26 @@ export async function* streamAgent(
 
     const results: Anthropic.ToolResultBlockParam[] = [];
     for (const tu of toolUses) {
+      if (signal?.aborted) {
+        // Cancelled mid-batch — emit a synthetic failed tool_result so the
+        // assistant message remains well-formed if a future iteration runs,
+        // and so the UI's pending tool entry resolves.
+        const idx = toolsUsed.findIndex(
+          (t) => t.name === tu.name && t.ok === undefined,
+        );
+        if (idx >= 0) toolsUsed[idx] = { name: tu.name, ok: false };
+        yield {
+          type: "tool_result",
+          data: { name: tu.name, ok: false },
+        };
+        results.push({
+          type: "tool_result",
+          tool_use_id: tu.id,
+          content: JSON.stringify({ error: "aborted by user" }),
+          is_error: true,
+        });
+        continue;
+      }
       const out = await runTool(tu.name, tu.input as Record<string, unknown>, {
         category,
       });
@@ -325,16 +356,37 @@ export async function* streamAgent(
       });
     }
     apiMessages.push({ role: "user", content: results });
+
+    // Re-check after the (possibly long-running) tool batch — if the client
+    // hung up mid-batch, stop before kicking off another model call.
+    if (signal?.aborted) {
+      recordUsage({ source, model, ...totals });
+      await logRaw();
+      yield { type: "aborted", data: "aborted by user" };
+      return;
+    }
   }
 
   recordUsage({ source, model, ...totals });
   await logRaw();
   yield { type: "error", data: "max iterations reached" };
   } catch (e) {
+    const err = e as Error;
+    const aborted =
+      signal?.aborted ||
+      err.name === "AbortError" ||
+      err.name === "APIUserAbortError" ||
+      /aborted/i.test(err.message ?? "");
     recordUsage({ source, model, ...totals });
-    logError(`agent:${source}`, (e as Error).message, { category, model });
+    if (!aborted) {
+      logError(`agent:${source}`, err.message, { category, model });
+    }
     await logRaw();
-    yield { type: "error", data: (e as Error).message };
+    if (aborted) {
+      yield { type: "aborted", data: "aborted by user" };
+    } else {
+      yield { type: "error", data: err.message };
+    }
   }
 }
 
