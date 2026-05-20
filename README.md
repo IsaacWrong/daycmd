@@ -131,6 +131,19 @@ Once `/setup` shows **ready**, open `http://localhost:3000` and pin as your new-
 | `GITHUB_TOKEN` | Classic PAT w/ scopes `repo`, `notifications`, `read:user`. Powers GitHub section, ship streak, heatmap. |
 | `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | OAuth web client. Redirect URI `http://localhost:3000/api/auth/google/callback`. Click *Connect Google* in `/settings` to authorize Gmail + Calendar. |
 
+### Experimental / undocumented integrations
+
+These are wired in code but not part of the documented happy path. Treat as personal-use experiments — APIs, env names, and behavior may change without notice.
+
+| Env | Purpose |
+|---|---|
+| `ENABLE_SCHEDULER` | Set to `1` to start the `node-cron` scheduler from `instrumentation.ts`. Unset by default — leave off in foreground dev, enable for the launchd service or when testing crons. |
+| `DISCORD_BOT_TOKEN` | Bot token for the Discord integration exposed via `src/lib/settings.ts` (`getDiscordSettings`). You can also paste the token through `/settings` instead of the env file; the DB copy wins. |
+| `POSTHOG_API_KEY` | PostHog personal API key used by project hero stats / analytics adapters. |
+| `POSTHOG_BASE_URL` | PostHog API base URL. Defaults to `https://us.posthog.com`. |
+| `KERNEL_API_KEY` | API key for [Kernel](https://onkernel.com) browser sessions. Consumed only by `scripts/kernel-smoke.mjs` (manual smoke test). |
+| `TARGET_URL` | Tunnel / public URL the Kernel smoke script should drive. Set alongside `KERNEL_API_KEY` when running `node scripts/kernel-smoke.mjs`. |
+
 ## Stack
 
 Next.js 16 · React 19 · TypeScript · Tailwind v4 (`@theme inline` design tokens) · SQLite via `better-sqlite3` · `@anthropic-ai/sdk` · `googleapis` · `octokit` · `node-cron` · `gray-matter` · `date-fns` · `zod`.
