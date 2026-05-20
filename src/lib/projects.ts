@@ -3,6 +3,11 @@ import path from "node:path";
 import { format, differenceInMinutes, subDays } from "date-fns";
 import matter from "gray-matter";
 import { env } from "./config";
+import {
+  trashBeforeOverwrite,
+  vaultAppend,
+  vaultWrite,
+} from "./vault-write";
 
 const PROJECTS_DIR = path.join(env.VAULT_PATH, "Projects");
 const INBOX_PATH = path.join(env.VAULT_PATH, "Inbox.md");
@@ -84,7 +89,8 @@ export async function listActiveProjects(): Promise<Project[]> {
 
 async function writeProject(project: Project, nextFrontmatter: ProjectFrontmatter, nextBody: string): Promise<number> {
   const serialized = matter.stringify(nextBody, nextFrontmatter as Record<string, unknown>);
-  await fs.writeFile(project.filePath, serialized, "utf8");
+  await trashBeforeOverwrite(project.filePath);
+  await vaultWrite(project.filePath, serialized);
   const stat = await fs.stat(project.filePath);
   return stat.mtimeMs;
 }
@@ -156,9 +162,10 @@ export async function appendUnfiledIdea(text: string, now = new Date()): Promise
   try {
     await fs.access(INBOX_PATH);
   } catch {
-    await fs.writeFile(INBOX_PATH, `# Inbox\n\n`, "utf8");
+    // New file — no prior contents to trash.
+    await vaultWrite(INBOX_PATH, `# Inbox\n\n`);
   }
-  await fs.appendFile(INBOX_PATH, line, "utf8");
+  await vaultAppend(INBOX_PATH, line);
   return INBOX_PATH;
 }
 
@@ -226,7 +233,6 @@ export async function createProject(
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
-  await fs.mkdir(PROJECTS_DIR, { recursive: true });
   const fm: ProjectFrontmatter = {
     type: "project",
     status: fields.status ?? "idea",
@@ -238,7 +244,8 @@ export async function createProject(
   if (fields.next) fm.next = fields.next;
   const body = `\n## Next\n\n${fields.next ?? ""}\n\n## Log\n\n## Ideas\n\n`;
   const serialized = matter.stringify(body, fm as Record<string, unknown>);
-  await fs.writeFile(filePath, serialized, "utf8");
+  // New project file (we already asserted it didn't exist above) — no trash.
+  await vaultWrite(filePath, serialized);
   return readProject(trimmed);
 }
 

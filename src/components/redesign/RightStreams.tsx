@@ -15,6 +15,7 @@ import { useMailOverlay } from "@/components/mail/MailOverlayProvider";
 import { parseEventTime } from "@/components/calendar/dates";
 import { RUN_SKILL_EVENT } from "./useAgent";
 import { SKILLS } from "@/lib/skills-defs";
+import { apiFetch } from "@/lib/fetch-client";
 
 type GoogleStatusFields = {
   configured: boolean;
@@ -142,7 +143,7 @@ function CalendarRow({ e }: { e: CalEvent }) {
     if (busy || brief) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/micro/event-brief", {
+      const res = await apiFetch("/api/micro/event-brief", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -430,7 +431,7 @@ export function InboxSection() {
             subject: m.subject,
             snippet: m.snippet,
           }));
-        const res = await fetch("/api/micro/inbox-synopsis", {
+        const res = await apiFetch("/api/micro/inbox-synopsis", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ messages: payload }),
@@ -770,7 +771,7 @@ export function KnowledgeSection() {
     if (!target) return;
     setBusy(name);
     try {
-      await fetch(`/api/automations/${target.id}/run`, { method: "POST" });
+      await apiFetch(`/api/automations/${target.id}/run`, { method: "POST" });
     } finally {
       setBusy(null);
       refresh();
@@ -835,7 +836,7 @@ export function ErrorsSection() {
   async function resolve(id: string) {
     setBusy(id);
     try {
-      await fetch(`/api/errors/${encodeURIComponent(id)}`, {
+      await apiFetch(`/api/errors/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ resolved: true }),
@@ -851,7 +852,7 @@ export function ErrorsSection() {
     try {
       await Promise.all(
         ids.map((id) =>
-          fetch(`/api/errors/${encodeURIComponent(id)}`, {
+          apiFetch(`/api/errors/${encodeURIComponent(id)}`, {
             method: "PATCH",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ resolved: true }),

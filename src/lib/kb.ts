@@ -9,6 +9,7 @@ import {
   defaultCategories,
 } from "./kb-schemas";
 import { safeJoin, safeVaultJoin } from "./vault-path";
+import { trashBeforeOverwrite, vaultDelete, vaultWrite } from "./vault-write";
 
 const KB_ROOT_NAME = "Categories";
 
@@ -28,7 +29,8 @@ async function writeIfMissing(p: string, content: string): Promise<void> {
   try {
     await fs.access(p);
   } catch {
-    await fs.writeFile(p, content, "utf8");
+    // New schema/INDEX seed file — no prior contents to trash.
+    await vaultWrite(p, content);
   }
 }
 
@@ -210,7 +212,8 @@ export async function writeRawAgentRun(input: {
     body.push("");
   }
 
-  await fs.writeFile(fullPath, frontmatter + body.join("\n"), "utf8");
+  // New file each call (timestamp-prefixed filename) — no prior contents.
+  await vaultWrite(fullPath, frontmatter + body.join("\n"));
   return path.relative(env.VAULT_PATH, fullPath);
 }
 
@@ -240,11 +243,10 @@ export async function writeRawIngest(input: {
     .filter(Boolean)
     .join("\n");
 
-  await fs.writeFile(
-    fullPath,
-    `${fm}# ${input.title}\n\n${input.content}\n`,
-    "utf8",
-  );
+  // Timestamp-prefixed filename — collisions are improbable, but trash any
+  // accidental overwrite just in case (cheap when the file doesn't exist).
+  await trashBeforeOverwrite(fullPath);
+  await vaultWrite(fullPath, `${fm}# ${input.title}\n\n${input.content}\n`);
   return path.relative(env.VAULT_PATH, fullPath);
 }
 
@@ -258,10 +260,12 @@ export async function writeOutput(input: {
   const slug = slugify(input.title) || "output";
   const filename = `${date}-${slug}.md`;
   const fullPath = path.join(categoryPath(input.category), "output", filename);
-  await fs.writeFile(
+  // Filename is date+slug; two runs the same day with the same title overwrite
+  // each other today, so trash any prior copy.
+  await trashBeforeOverwrite(fullPath);
+  await vaultWrite(
     fullPath,
     `---\ntype: output\ncategory: ${input.category}\ndate: ${new Date().toISOString()}\n---\n\n# ${input.title}\n\n${input.content}\n`,
-    "utf8",
   );
   return path.relative(env.VAULT_PATH, fullPath);
 }
@@ -407,8 +411,8 @@ export async function wikiWrite(
   content: string,
 ): Promise<{ path: string }> {
   const full = safeJoin(categoryPath(category), "wiki", relPath);
-  await fs.mkdir(path.dirname(full), { recursive: true });
-  await fs.writeFile(full, content, "utf8");
+  await trashBeforeOverwrite(full);
+  await vaultWrite(full, content);
   return { path: path.relative(env.VAULT_PATH, full) };
 }
 
@@ -417,7 +421,7 @@ export async function wikiDelete(
   relPath: string,
 ): Promise<void> {
   const full = safeJoin(categoryPath(category), "wiki", relPath);
-  await fs.unlink(full);
+  await vaultDelete(full);
 }
 
 // Compile record helpers — backed by per-device NDJSON in the vault, with a

@@ -141,16 +141,42 @@ export function usePoll<T>(
   );
 
   useEffect(() => {
+    let id: ReturnType<typeof setInterval> | null = null;
+    const isVisible = () =>
+      typeof document === "undefined" ||
+      document.visibilityState === "visible";
+
+    function startInterval() {
+      if (id !== null) return;
+      id = setInterval(() => void fetchInto<T>(url, url), intervalMs);
+    }
+    function stopInterval() {
+      if (id === null) return;
+      clearInterval(id);
+      id = null;
+    }
+
     void fetchInto<T>(url, url);
-    const id = setInterval(() => void fetchInto<T>(url, url), intervalMs);
+    if (isVisible()) startInterval();
+
     function onInvalidate(e: Event) {
       const detail = (e as CustomEvent<{ url: string }>).detail;
       if (detail?.url === url) void fetchInto<T>(url, url);
     }
+    function onVisibilityChange() {
+      if (isVisible()) {
+        void fetchInto<T>(url, url);
+        startInterval();
+      } else {
+        stopInterval();
+      }
+    }
     window.addEventListener(INVALIDATE_EVENT, onInvalidate);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
-      clearInterval(id);
+      stopInterval();
       window.removeEventListener(INVALIDATE_EVENT, onInvalidate);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [url, intervalMs]);
 

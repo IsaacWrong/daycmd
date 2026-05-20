@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { TodFrame, useFocusMode, useTod } from "@/components/redesign/TodFrame";
+import { apiFetch } from "@/lib/fetch-client";
 
 type EnvStatus = {
   vaultPath: { present: boolean; valid: boolean; reason?: string };
@@ -84,7 +85,7 @@ export default function SetupPage() {
         setErr("Nothing to save — fill at least one field.");
         return;
       }
-      const res = await fetch("/api/setup", {
+      const res = await apiFetch("/api/setup", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),

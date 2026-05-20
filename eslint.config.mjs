@@ -5,10 +5,12 @@ export default [
   {
     ignores: [
       ".next/**",
+      ".claude/**",
       "coverage/**",
       "node_modules/**",
       "examples/**",
       "design_handoff_aios_redesign/**",
+      "**/design_handoff_aios_redesign/**",
       "next-env.d.ts",
       "*.tsbuildinfo",
     ],

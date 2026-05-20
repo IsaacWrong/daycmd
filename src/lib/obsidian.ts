@@ -5,6 +5,26 @@ import { env } from "./config";
 import { parseTasks, sortTasks, type ObsidianTask } from "./tasks-parser";
 import { renderTemplate } from "./template-tokens";
 import { safeJoin, safeVaultJoin } from "./vault-path";
+import {
+  sweepTrash,
+  trashBeforeOverwrite,
+  vaultAppend,
+  vaultWrite,
+} from "./vault-write";
+
+// Opportunistic trash sweep: 14 days. We piggyback on writeDailyNote so the
+// sweep runs at most once per process per UTC day, and only when the agent is
+// already touching the vault. Cheaper than a dedicated scheduler tick and
+// avoids needing ENABLE_SCHEDULER=1 to gain the safety benefit.
+const TRASH_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+let lastSweepDay: string | null = null;
+function maybeSweep(date: Date): void {
+  const day = format(date, "yyyy-MM-dd");
+  if (lastSweepDay === day) return;
+  lastSweepDay = day;
+  // Fire-and-forget — never let a sweep failure block a vault write.
+  void sweepTrash(TRASH_TTL_MS).catch(() => {});
+}
 
 const VAULT = env.VAULT_PATH;
 const TASKS_DIR = safeVaultJoin("Tasks");
@@ -81,8 +101,9 @@ export async function writeDailyNote(
   date = new Date(),
 ): Promise<number> {
   const p = dailyNotePath(date);
-  await fs.mkdir(path.dirname(p), { recursive: true });
-  await fs.writeFile(p, content, "utf8");
+  await trashBeforeOverwrite(p);
+  await vaultWrite(p, content);
+  maybeSweep(date);
   const stat = await fs.stat(p);
   return stat.mtimeMs;
 }
@@ -110,8 +131,8 @@ export async function ensureDailyNote(date = new Date()): Promise<{
       body = "";
     }
   }
-  await fs.mkdir(path.dirname(p), { recursive: true });
-  await fs.writeFile(p, body, "utf8");
+  // New file — no prior contents to trash.
+  await vaultWrite(p, body);
   const stat = await fs.stat(p);
   return { path: p, created: true, mtime: stat.mtimeMs };
 }
@@ -121,14 +142,12 @@ export async function appendToDailyNote(
   date = new Date(),
 ): Promise<number> {
   const p = dailyNotePath(date);
-  await fs.mkdir(path.dirname(p), { recursive: true });
   let existing = "";
   try {
     existing = await fs.readFile(p, "utf8");
   } catch {}
   const sep = existing && !existing.endsWith("\n") ? "\n" : "";
-  const next = existing + sep + text + "\n";
-  await fs.writeFile(p, next, "utf8");
+  await vaultAppend(p, sep + text + "\n");
   const stat = await fs.stat(p);
   return stat.mtimeMs;
 }
