@@ -21,7 +21,7 @@ You should get an acknowledgement within 5 business days. Once a fix is ready, w
 
 ## Scope
 
-Daycmd runs entirely on the user's machine and stores secrets in `.env.local` + a local SQLite database (`data/daycmd.db`). The threat model is local-first; in scope:
+Daycmd runs entirely on the user's machine and stores secrets in `.env.local` + a local SQLite database (`data/secrets.db`). The threat model is local-first; in scope:
 
 - Code paths that could exfiltrate `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, or stored Google OAuth tokens to a remote endpoint not chosen by the user
 - Path-traversal or arbitrary-write bugs in the Obsidian read/write tools (`src/lib/obsidian/*`)
