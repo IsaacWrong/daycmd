@@ -15,7 +15,7 @@ Opens with your browser. Knows your day. Routes the work through Claude.
 
 ## What it is
 
-A single Next.js app that runs on `localhost`, reads your Obsidian vault, your Gmail, your Calendar, your GitHub, and your Anthropic spend, and gives you one page that opens with the browser every morning. A Claude agent sits in the dock. Skills (`⌘1`–`⌘6`) trigger triage / brief / plan / lint / review flows. Focus mode dims everything except the work in front of you. The background gradient shifts with the hour.
+A single Next.js app that runs on `localhost`, reads your Obsidian vault, your Gmail, your Calendar, your GitHub, and your Anthropic spend, and gives you one page that opens with the browser every morning. A Claude agent sits in the dock. Skills (`⌘1`–`⌘6`) trigger brief / triage / plan / stale / reflect / capture flows on the default `Personal` category. Focus mode dims everything except the work in front of you. The background gradient shifts with the hour.
 
 It is not Notion. It is not a workspace. It is a calm command center — read this, do this, talk to Claude about it.
 
