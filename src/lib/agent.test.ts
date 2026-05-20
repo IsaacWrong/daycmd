@@ -210,5 +210,74 @@ describe("streamAgent abort signal (issue #25)", () => {
   });
 });
 
-// Mid-flight budget cap tests (issue #26) live in this same file — added in
-// the follow-up commit so each commit lands green tests.
+describe("streamAgent mid-flight budget cap (issue #26)", () => {
+  it("aborts the loop with a 'budget cap exceeded' error after the iteration that crosses the cap", async () => {
+    // Budget: $0.10. Each iteration burns enough Opus tokens to cost a lot
+    // more than that on its own, so the post-iteration check should fire and
+    // prevent a second model call.
+    budgetDailyUsd = 0.1;
+    getTodaySpendUsd.mockReturnValue(0);
+
+    // 1M output tokens of opus-4-7 = $25, way over the $0.10 cap.
+    streamFn.mockImplementationOnce(() =>
+      makeStream(
+        [],
+        {
+          stop_reason: "tool_use",
+          content: [
+            {
+              type: "tool_use",
+              id: "tu_1",
+              name: "noop",
+              input: {},
+            },
+          ],
+          usage: { input_tokens: 0, output_tokens: 1_000_000 },
+        },
+      ),
+    );
+
+    const events = await collect(
+      streamAgent([{ role: "user", content: "hi" }]),
+    );
+
+    // Only one model call — the post-iteration check tripped the cap.
+    expect(streamFn).toHaveBeenCalledTimes(1);
+    const err = events.find((e) => e.type === "error");
+    expect(err, "should emit budget-cap error").toBeDefined();
+    expect(String(err?.data)).toMatch(/budget cap/i);
+    // Usage was recorded — the user paid for what they got, no silent loss.
+    expect(recordUsage).toHaveBeenCalled();
+  });
+
+  it("emits an interim recordUsage between iterations so concurrent processes see spend in near-real time", async () => {
+    // Two iterations, neither over cap, end with end_turn on second.
+    streamFn.mockImplementationOnce(() =>
+      makeStream(
+        [],
+        {
+          stop_reason: "tool_use",
+          content: [
+            { type: "tool_use", id: "tu_a", name: "noop", input: {} },
+          ],
+          usage: { input_tokens: 1000, output_tokens: 500 },
+        },
+      ),
+    );
+    streamFn.mockImplementationOnce(() =>
+      makeStream(
+        [{ type: "content_block_delta", delta: { type: "text_delta", text: "ok" } }],
+        {
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: "ok" }],
+          usage: { input_tokens: 500, output_tokens: 100 },
+        },
+      ),
+    );
+
+    await collect(streamAgent([{ role: "user", content: "hi" }]));
+
+    // At least one interim record before the final end_turn record.
+    expect(recordUsage.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+});

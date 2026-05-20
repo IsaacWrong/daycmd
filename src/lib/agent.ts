@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "./config";
 import { tools, runTool } from "./agent-tools";
-import { recordUsage, getTodaySpendUsd } from "./usage";
+import { recordUsage, getTodaySpendUsd, costFromUsage } from "./usage";
 import { writeRawAgentRun } from "./kb";
 import { getSettings } from "./settings";
 import { logError } from "./errors";
@@ -119,16 +119,19 @@ export async function* streamAgent(
     return;
   }
 
-  // Hard budget cap check
+  // Budget cap — soft pre-flight check + hard mid-flight enforcement below.
+  // The pre-flight catches runs that *start* over budget; the post-iteration
+  // check inside the tool loop catches runs that *grow* over budget. With an
+  // 8-iteration loop and Opus pricing, a single iteration can easily cost
+  // several dollars, so checking only at entry could overshoot by 10x+.
   const settings = getSettings();
-  if (settings.budgetDailyUsd > 0) {
-    const spent = getTodaySpendUsd();
-    if (spent >= settings.budgetDailyUsd) {
-      const msg = `Daily budget cap hit ($${spent.toFixed(2)} / $${settings.budgetDailyUsd}). Raise in Settings or wait until tomorrow.`;
-      logError("agent.budget", msg);
-      yield { type: "error", data: msg };
-      return;
-    }
+  const budgetCap = settings.budgetDailyUsd;
+  let lastRecordedSpend = budgetCap > 0 ? getTodaySpendUsd() : 0;
+  if (budgetCap > 0 && lastRecordedSpend >= budgetCap) {
+    const msg = `Daily budget cap hit ($${lastRecordedSpend.toFixed(2)} / $${budgetCap}). Raise in Settings or wait until tomorrow.`;
+    logError("agent.budget", msg);
+    yield { type: "error", data: msg };
+    return;
   }
 
   const source = opts.source ?? "panel";
@@ -180,6 +183,34 @@ export async function* streamAgent(
     cache_read_tokens: 0,
     cache_write_tokens: 0,
   };
+  // Tracks tokens already written to the usage log so we can record per-
+  // iteration deltas without double-counting the final flush.
+  const recorded: UsageTotals = {
+    input_tokens: 0,
+    output_tokens: 0,
+    cache_read_tokens: 0,
+    cache_write_tokens: 0,
+  };
+
+  function flushUsage(): void {
+    const delta: UsageTotals = {
+      input_tokens: totals.input_tokens - recorded.input_tokens,
+      output_tokens: totals.output_tokens - recorded.output_tokens,
+      cache_read_tokens: totals.cache_read_tokens - recorded.cache_read_tokens,
+      cache_write_tokens: totals.cache_write_tokens - recorded.cache_write_tokens,
+    };
+    const hasDelta =
+      delta.input_tokens > 0 ||
+      delta.output_tokens > 0 ||
+      delta.cache_read_tokens > 0 ||
+      delta.cache_write_tokens > 0;
+    if (!hasDelta) return;
+    recordUsage({ source, model, ...delta });
+    recorded.input_tokens = totals.input_tokens;
+    recorded.output_tokens = totals.output_tokens;
+    recorded.cache_read_tokens = totals.cache_read_tokens;
+    recorded.cache_write_tokens = totals.cache_write_tokens;
+  }
 
   const toolsUsed: Array<{ name: string; ok?: boolean }> = [];
   let collectedText = "";
@@ -206,7 +237,7 @@ export async function* streamAgent(
   try {
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
     if (signal?.aborted) {
-      recordUsage({ source, model, ...totals });
+      flushUsage();
       await logRaw();
       yield { type: "aborted", data: "aborted by user" };
       return;
@@ -285,8 +316,31 @@ export async function* streamAgent(
     totals.cache_read_tokens += final.usage.cache_read_input_tokens ?? 0;
     totals.cache_write_tokens += final.usage.cache_creation_input_tokens ?? 0;
 
+    // Flush usage now (not just at end_turn) so concurrent processes and
+    // other devices see this run's spend within seconds rather than minutes.
+    flushUsage();
+
+    // Mid-flight budget cap: if this iteration's accumulated cost pushed the
+    // user's daily spend over the cap, refuse to start another iteration.
+    // This is a HARD cap on launching new model calls — an in-flight stream
+    // already counted toward `totals` above and was paid for. With the 8-iter
+    // tool loop this gives a worst-case overshoot of one iteration vs. the
+    // pre-flight-only check overshooting up to 8.
+    if (budgetCap > 0) {
+      const runCost = costFromUsage(model, totals);
+      if (lastRecordedSpend + runCost >= budgetCap) {
+        const msg = `Daily budget cap exceeded mid-run ($${(lastRecordedSpend + runCost).toFixed(2)} / $${budgetCap}). Stopping before next iteration.`;
+        logError("agent.budget", msg, { iter, model });
+        await logRaw();
+        yield { type: "error", data: msg };
+        return;
+      }
+      // Refresh from disk so we account for parallel runs that recorded spend
+      // since we sampled at entry.
+      lastRecordedSpend = getTodaySpendUsd();
+    }
+
     if (final.stop_reason === "end_turn") {
-      recordUsage({ source, model, ...totals });
       await logRaw();
       yield { type: "usage", data: totals };
       yield { type: "done", data: { category } };
@@ -301,7 +355,6 @@ export async function* streamAgent(
     }
 
     if (final.stop_reason !== "tool_use") {
-      recordUsage({ source, model, ...totals });
       await logRaw();
       yield {
         type: "error",
@@ -360,14 +413,14 @@ export async function* streamAgent(
     // Re-check after the (possibly long-running) tool batch — if the client
     // hung up mid-batch, stop before kicking off another model call.
     if (signal?.aborted) {
-      recordUsage({ source, model, ...totals });
+      flushUsage();
       await logRaw();
       yield { type: "aborted", data: "aborted by user" };
       return;
     }
   }
 
-  recordUsage({ source, model, ...totals });
+  flushUsage();
   await logRaw();
   yield { type: "error", data: "max iterations reached" };
   } catch (e) {
@@ -377,7 +430,7 @@ export async function* streamAgent(
       err.name === "AbortError" ||
       err.name === "APIUserAbortError" ||
       /aborted/i.test(err.message ?? "");
-    recordUsage({ source, model, ...totals });
+    flushUsage();
     if (!aborted) {
       logError(`agent:${source}`, err.message, { category, model });
     }
