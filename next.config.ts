@@ -10,7 +10,6 @@ const nextConfig: NextConfig = {
     "googleapis",
     "octokit",
     "node-cron",
-    "chokidar",
     "@anthropic-ai/sdk",
     "gray-matter",
   ],
