@@ -3,6 +3,7 @@ import path from "node:path";
 import { format } from "date-fns";
 import { env } from "./config";
 import { safeJoin, safeVaultJoin } from "./vault-path";
+import { trashBeforeOverwrite, vaultWrite } from "./vault-write";
 
 const TASKS_DIR = () => safeVaultJoin("Tasks");
 
@@ -55,7 +56,8 @@ export async function appendTask(input: {
   const taskLine = parts.join(" ");
 
   const next = body.endsWith("\n") || body === "" ? body + taskLine + "\n" : body + "\n" + taskLine + "\n";
-  await fs.writeFile(filePath, next, "utf8");
+  await trashBeforeOverwrite(filePath);
+  await vaultWrite(filePath, next);
 
   const lineIndex = next.split("\n").findIndex((l) => l === taskLine);
   return {
@@ -133,7 +135,8 @@ export async function editTask(input: {
   }
   const rebuilt = `${m[1]}[${m[2]}]${m[3]}${buildTaskBody(input)}`;
   lines[input.line] = rebuilt;
-  await fs.writeFile(filePath, lines.join("\n"), "utf8");
+  await trashBeforeOverwrite(filePath);
+  await vaultWrite(filePath, lines.join("\n"));
   return { ok: true, line: input.line, raw: rebuilt };
 }
 
@@ -161,6 +164,7 @@ export async function markTaskDone(input: {
     matched++;
   }
   if (matched === 0) return { ok: false, error: `no open task matched: ${input.text}` };
-  await fs.writeFile(filePath, lines.join("\n"), "utf8");
+  await trashBeforeOverwrite(filePath);
+  await vaultWrite(filePath, lines.join("\n"));
   return { ok: true, matched };
 }
